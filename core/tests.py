@@ -1,10 +1,8 @@
 from datetime import date, timedelta
 
-import pytest
-from django.test import TestCase, RequestFactory
-from django.contrib.auth.models import User
+from django.test import TestCase
 
-from .models import Activity, SyncLog, StravaToken
+from .models import Activity
 from .views import _daily_streaks, _weekly_streaks, _avg_pace_min_per_km
 
 
@@ -66,7 +64,8 @@ class DailyStreakTests(TestCase):
         today = date(2024, 6, 10)
         dates = {date(2024, 6, 8), date(2024, 6, 7), date(2024, 6, 1)}
         current, longest = _daily_streaks(dates, today)
-        assert current == 2
+        # last run was June 8 — two days ago — so the streak is broken
+        assert current == 0
         assert longest == 2
 
 
