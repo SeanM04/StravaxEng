@@ -108,3 +108,14 @@ class AvgPaceTests(TestCase):
         a = make_activity(distance_meters=10000, moving_time_seconds=3600)
         result = _avg_pace_min_per_km([a])
         assert abs(result - 6.0) < 0.01
+
+
+# ── Health check ──────────────────────────────────────────────────────────────
+
+class HealthCheckTests(TestCase):
+    def test_health_returns_200_with_db(self):
+        response = self.client.get("/health/")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["database"] == "connected"

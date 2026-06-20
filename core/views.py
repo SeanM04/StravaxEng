@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncWeek
+from django.http import JsonResponse
 from django.shortcuts import render
 
 from .models import Activity, SyncLog, StravaToken
@@ -139,7 +140,9 @@ def activities_list(request):
     qs = qs.order_by(sort_field)
 
     page_obj    = Paginator(qs, 25).get_page(request.GET.get("page"))
-    sport_types = Activity.objects.values_list("sport_type", flat=True).distinct().order_by("sport_type")
+    sport_types = (
+        Activity.objects.values_list("sport_type", flat=True).distinct().order_by("sport_type")
+    )
 
     return render(request, "core/activities.html", {
         "active_page": "activities", "page_title": "Activities",
@@ -156,10 +159,13 @@ def analytics(request):
         .annotate(total_m=Sum("distance_meters"), count=Count("id")).order_by("week")
     )
     run_qs = (
-        Activity.objects.filter(sport_type="Run", distance_meters__gte=1000, moving_time_seconds__gt=0)
-        .order_by("start_date").values("start_date", "distance_meters", "moving_time_seconds")
+        Activity.objects.filter(
+            sport_type="Run", distance_meters__gte=1000, moving_time_seconds__gt=0
+        ).order_by("start_date").values("start_date", "distance_meters", "moving_time_seconds")
     )
-    run_stats    = Activity.objects.filter(sport_type="Run").aggregate(count=Count("id"), total_m=Sum("distance_meters"))
+    run_stats = Activity.objects.filter(sport_type="Run").aggregate(
+        count=Count("id"), total_m=Sum("distance_meters")
+    )
     total_run_km = round((run_stats["total_m"] or 0) / 1000, 1)
 
     return render(request, "core/analytics.html", {
@@ -240,7 +246,9 @@ def pipeline_health(request):
     return render(request, "core/pipeline.html", {
         "active_page": "pipeline", "page_title": "Pipeline Health",
         "logs":             SyncLog.objects.all()[:20],
-        "last_success":     SyncLog.objects.filter(status=SyncLog.Status.SUCCESS).order_by("-finished_at").first(),
+        "last_success": (
+            SyncLog.objects.filter(status=SyncLog.Status.SUCCESS).order_by("-finished_at").first()
+        ),
         "total_activities": Activity.objects.count(),
         "total_runs":       Activity.objects.filter(sport_type="Run").count(),
         "total_syncs":      total_syncs,
@@ -257,3 +265,11 @@ def settings_view(request):
         "token": token, "has_token": token is not None,
         "token_expired": token.is_expired if token else True,
     })
+
+
+def health(request):
+    try:
+        Activity.objects.exists()
+        return JsonResponse({"status": "ok", "database": "connected"})
+    except Exception:  # noqa: BLE001 — any DB error should return 503
+        return JsonResponse({"status": "error", "database": "unreachable"}, status=503)

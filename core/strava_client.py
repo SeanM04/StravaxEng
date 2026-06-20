@@ -11,20 +11,41 @@ This module reads tokens from and writes them back to the StravaToken DB row,
 so every rotation is persisted automatically. The .env file is only used for
 the initial bootstrap — after that, the DB is the source of truth.
 """
+import logging
 import time
+
 import requests
 from django.conf import settings
 
+logger = logging.getLogger(__name__)
+
 
 def _load_token():
-    from core.models import StravaToken
+    from core.models import StravaToken  # late import avoids circular dependency
     token = StravaToken.objects.first()
     if not token:
         raise RuntimeError(
             "No Strava token found in the database. "
-            "Run: python manage.py bootstrap_token"
+            "Run: python manage.py get_strava_token"
         )
     return token
+
+
+def _parse_response_body(response):
+    try:
+        return response.json()
+    except ValueError:
+        return response.text
+
+
+def _is_dead_token(status_code, body):
+    """True when the refresh token is revoked or invalid — retrying won't help."""
+    if status_code == 401:
+        return True
+    if isinstance(body, dict):
+        errors = body.get("errors", [])
+        return any(e.get("code") == "invalid" and e.get("field") == "refresh_token" for e in errors)
+    return False
 
 
 def get_access_token() -> str:
@@ -33,41 +54,49 @@ def get_access_token() -> str:
 
     Returns the cached token if it still has more than 5 minutes of life.
     Otherwise calls /oauth/token, persists the rotated token pair, and returns
-    the new access token.
+    the new access token. Retries once after 2 s on transient failures; raises
+    immediately on 401 or invalid_grant without retrying.
     """
     token = _load_token()
-
     if not token.is_expired:
         return token.access_token
 
-    response = requests.post(
-        settings.STRAVA_TOKEN_URL,
-        data={
-            "client_id":     settings.STRAVA_CLIENT_ID,
-            "client_secret": settings.STRAVA_CLIENT_SECRET,
-            "refresh_token": token.refresh_token,
-            "grant_type":    "refresh_token",
-        },
-        timeout=10,
-    )
+    payload = {
+        "client_id":     settings.STRAVA_CLIENT_ID,
+        "client_secret": settings.STRAVA_CLIENT_SECRET,
+        "refresh_token": token.refresh_token,
+        "grant_type":    "refresh_token",
+    }
+
+    response = requests.post(settings.STRAVA_TOKEN_URL, data=payload, timeout=10)
 
     if not response.ok:
-        try:
-            detail = response.json()
-        except Exception:
-            detail = response.text
-        raise RuntimeError(
-            f"Strava token refresh failed ({response.status_code}): {detail}"
+        body = _parse_response_body(response)
+
+        if _is_dead_token(response.status_code, body):
+            raise RuntimeError(
+                f"Strava refresh token is invalid or revoked ({response.status_code}). "
+                "Re-run: python manage.py get_strava_token"
+            )
+
+        logger.warning(
+            "Strava token refresh failed (%s) — retrying in 2 s: %s",
+            response.status_code, body,
         )
+        time.sleep(2)
+        response = requests.post(settings.STRAVA_TOKEN_URL, data=payload, timeout=10)
+
+        if not response.ok:
+            detail = _parse_response_body(response)
+            raise RuntimeError(
+                f"Strava token refresh failed after retry ({response.status_code}): {detail}"
+            )
 
     data = response.json()
-
-    # Persist the rotated token pair — critical to avoid 400 on the next run
     token.access_token  = data["access_token"]
     token.refresh_token = data["refresh_token"]
     token.expires_at    = data["expires_at"]
     token.save(update_fields=["access_token", "refresh_token", "expires_at", "updated_at"])
-
     return token.access_token
 
 
