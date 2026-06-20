@@ -66,8 +66,8 @@ class Activity(models.Model):
 
     strava_id = models.BigIntegerField(unique=True)
     name = models.CharField(max_length=255)
-    sport_type = models.CharField(max_length=50, choices=SportType.choices, default=SportType.OTHER)
-    start_date = models.DateTimeField()
+    sport_type = models.CharField(max_length=50, choices=SportType.choices, default=SportType.OTHER, db_index=True)
+    start_date = models.DateTimeField(db_index=True)
     distance_meters = models.FloatField(default=0)
     moving_time_seconds = models.IntegerField(default=0)
     elapsed_time_seconds = models.IntegerField(default=0)
