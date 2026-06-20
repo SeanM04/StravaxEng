@@ -152,3 +152,44 @@ class Activity(models.Model):
         if hours:
             return f"{hours}h {minutes:02d}m {seconds:02d}s"
         return f"{minutes}m {seconds:02d}s"
+
+
+class Achievement(models.Model):
+    """A single Strava achievement earned on a named segment during an activity.
+
+    Populated by the ``fetch_achievements`` management command, which calls
+    ``GET /activities/{id}`` for activities with ``achievement_count > 0``
+    and persists every achievement found in ``segment_efforts[].achievements``.
+
+    Each row uniquely identifies one achievement type on one segment within
+    one activity; the ``unique_together`` constraint allows safe upserts via
+    ``update_or_create``.
+    """
+
+    class Type(models.TextChoices):
+        PR      = "pr",      "Personal Record"
+        KOM     = "kom",     "King of the Mountain"
+        CR      = "cr",      "Course Record"
+        OVERALL = "overall", "Overall Leader"
+
+    activity         = models.ForeignKey(
+        Activity,
+        on_delete=models.CASCADE,
+        related_name="segment_achievements",
+    )
+    segment_name     = models.CharField(max_length=255)
+    achievement_type = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.PR
+    )
+    rank             = models.IntegerField(default=1)
+
+    class Meta:
+        unique_together = ("activity", "segment_name", "achievement_type")
+        ordering = ["achievement_type", "segment_name"]
+
+    def __str__(self):
+        """Return a readable summary of this achievement."""
+        return (
+            f"{self.get_achievement_type_display()} — "
+            f"{self.segment_name} (#{self.rank})"
+        )

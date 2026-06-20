@@ -1,0 +1,109 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+
+<div style="margin-bottom:1.25rem;">
+  <a href="{% url 'activities' %}" class="activity-link" style="font-size:.875rem;">← Back to Activities</a>
+</div>
+
+<!-- Activity meta -->
+<div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem;">
+  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+    <span class="badge badge-{{ activity.sport_type|lower }}">{{ activity.sport_type }}</span>
+    <span style="color:#6b7280;font-size:.875rem;">{{ activity.start_date|date:"F j, Y • g:i A" }}</span>
+    {% if activity.commute %}<span class="badge badge-other">Commute</span>{% endif %}
+    {% if activity.trainer %}<span class="badge badge-other">Trainer</span>{% endif %}
+  </div>
+</div>
+
+<!-- Stat cards -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="s-label">Distance</div>
+    <div class="s-value">{{ activity.distance_km }}</div>
+    <div class="s-unit">km</div>
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Moving Time</div>
+    <div class="s-value" style="font-size:1.3rem;">{{ activity.moving_time_display }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Pace</div>
+    <div class="s-value">{{ activity.pace_per_km }}</div>
+    <div class="s-unit">/km</div>
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Elevation</div>
+    <div class="s-value">{{ activity.total_elevation_gain|floatformat:0 }}</div>
+    <div class="s-unit">m gained</div>
+  </div>
+  {% if activity.average_heartrate %}
+  <div class="stat-card">
+    <div class="s-label">Avg Heart Rate</div>
+    <div class="s-value">{{ activity.average_heartrate|floatformat:0 }}</div>
+    <div class="s-unit">bpm</div>
+  </div>
+  {% endif %}
+  {% if activity.average_cadence %}
+  <div class="stat-card">
+    <div class="s-label">Avg Cadence</div>
+    <div class="s-value">{{ activity.average_cadence|floatformat:0 }}</div>
+    <div class="s-unit">spm</div>
+  </div>
+  {% endif %}
+  <div class="stat-card">
+    <div class="s-label">Kudos</div>
+    <div class="s-value">{{ activity.kudos_count }}</div>
+  </div>
+  {% if activity.calories %}
+  <div class="stat-card">
+    <div class="s-label">Calories</div>
+    <div class="s-value">{{ activity.calories|floatformat:0 }}</div>
+    <div class="s-unit">kcal</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Achievements -->
+<div class="card">
+  <div class="card-title">
+    Segment Achievements
+    {% if activity.achievement_count %}
+      <span class="badge badge-run" style="margin-left:.5rem;font-size:.65rem;">{{ activity.achievement_count }} total</span>
+    {% endif %}
+  </div>
+
+  {% if achievements %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Segment</th>
+          <th>Achievement</th>
+          <th>Rank</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ach in achievements %}
+        <tr>
+          <td>{{ ach.segment_name }}</td>
+          <td><span class="badge badge-{{ ach.achievement_type }}">{{ ach.get_achievement_type_display }}</span></td>
+          <td>#{{ ach.rank }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% elif activity.achievement_count > 0 %}
+  <div class="empty-state">
+    Achievement details not fetched yet.<br>
+    Run <code>python manage.py fetch_achievements</code> to pull them from Strava.
+  </div>
+
+  {% else %}
+  <div class="empty-state">No segment achievements on this activity.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -69,7 +69,7 @@
       <tbody>
         {% for a in page_obj.object_list %}
         <tr>
-          <td>{{ a.name|default:"—"|truncatechars:40 }}</td>
+          <td><a href="{% url 'activity_detail' a.strava_id %}" class="activity-link">{{ a.name|default:"—"|truncatechars:40 }}</a></td>
           <td><span class="badge badge-{{ a.sport_type|lower }}">{{ a.sport_type }}</span></td>
           <td>{{ a.start_date|date:"M d, Y" }}</td>
           <td>{{ a.distance_km }}</td>

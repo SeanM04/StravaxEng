@@ -91,7 +91,7 @@
       <tbody>
         {% for a in recent_activities %}
         <tr>
-          <td>{{ a.name|default:"—" }}</td>
+          <td><a href="{% url 'activity_detail' a.strava_id %}" class="activity-link">{{ a.name|default:"—" }}</a></td>
           <td><span class="badge badge-{{ a.sport_type|lower }}">{{ a.sport_type }}</span></td>
           <td>{{ a.start_date|date:"M d, Y" }}</td>
           <td>{{ a.distance_km }}</td>

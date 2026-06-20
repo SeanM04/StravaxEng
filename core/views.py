@@ -7,7 +7,7 @@ from django.core.paginator import Paginator
 from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncWeek
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 
 from .models import Activity, SyncLog, StravaToken
 
@@ -416,6 +416,28 @@ def settings_view(request):
         "active_page": "settings", "page_title": "Settings",
         "token": token, "has_token": token is not None,
         "token_expired": token.is_expired if token else True,
+    })
+
+
+@login_required
+def activity_detail(request, strava_id):
+    """Render the activity detail page with segment achievements.
+
+    Args:
+        request: Django ``HttpRequest``.
+        strava_id (int): The Strava activity ID from the URL.
+
+    Returns:
+        HttpResponse: Rendered ``core/activity_detail.html``, or 404 if no
+        activity with the given ``strava_id`` exists.
+    """
+    activity     = get_object_or_404(Activity, strava_id=strava_id)
+    achievements = activity.segment_achievements.all()
+    return render(request, "core/activity_detail.html", {
+        "active_page":  "activities",
+        "page_title":   activity.name,
+        "activity":     activity,
+        "achievements": achievements,
     })
 
 

@@ -1,6 +1,6 @@
-"""Django admin registrations for StravaToken, SyncLog, and Activity models."""
+"""Django admin registrations for StravaToken, SyncLog, Activity, and Achievement."""
 from django.contrib import admin
-from .models import Activity, StravaToken, SyncLog
+from .models import Achievement, Activity, StravaToken, SyncLog
 
 
 @admin.register(StravaToken)
@@ -59,3 +59,17 @@ class ActivityAdmin(admin.ModelAdmin):
     search_fields = ("name",)
     readonly_fields = ("synced_at", "raw_data")
     ordering      = ("-start_date",)
+
+
+@admin.register(Achievement)
+class AchievementAdmin(admin.ModelAdmin):
+    """Admin view for the Achievement model.
+
+    Achievements are populated by the ``fetch_achievements`` management command
+    and should not be created or edited manually.
+    """
+
+    list_display  = ("activity", "segment_name", "achievement_type", "rank")
+    list_filter   = ("achievement_type",)
+    search_fields = ("segment_name", "activity__name")
+    ordering      = ("-activity__start_date", "achievement_type", "segment_name")

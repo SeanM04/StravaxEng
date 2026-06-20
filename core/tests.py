@@ -1,8 +1,9 @@
 from datetime import date, timedelta
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 
-from .models import Activity
+from .models import Achievement, Activity
 from .views import _daily_streaks, _weekly_streaks, _avg_pace_min_per_km
 
 
@@ -155,3 +156,107 @@ class BackfillCaloriesTests(TestCase):
         a.refresh_from_db()
         assert a.calories is None
         assert a.achievement_count == 0
+
+
+# ── Achievement model ─────────────────────────────────────────────────────────
+
+class AchievementModelTests(TestCase):
+    def setUp(self):
+        self.activity = Activity.objects.create(
+            strava_id=88801,
+            name="Segment Run",
+            sport_type="Run",
+            start_date="2024-05-01T07:00:00Z",
+            achievement_count=2,
+        )
+
+    def test_str(self):
+        ach = Achievement(
+            activity=self.activity,
+            segment_name="Riverside Sprint",
+            achievement_type=Achievement.Type.PR,
+            rank=1,
+        )
+        assert str(ach) == "Personal Record — Riverside Sprint (#1)"
+
+    def test_str_kom(self):
+        ach = Achievement(
+            activity=self.activity,
+            segment_name="Big Hill",
+            achievement_type=Achievement.Type.KOM,
+            rank=1,
+        )
+        assert str(ach) == "King of the Mountain — Big Hill (#1)"
+
+    def test_unique_together_enforced(self):
+        Achievement.objects.create(
+            activity=self.activity,
+            segment_name="Sprint Segment",
+            achievement_type=Achievement.Type.PR,
+            rank=2,
+        )
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            Achievement.objects.create(
+                activity=self.activity,
+                segment_name="Sprint Segment",
+                achievement_type=Achievement.Type.PR,
+                rank=1,
+            )
+
+
+# ── Activity detail view ──────────────────────────────────────────────────────
+
+class ActivityDetailViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("testrunner", password="testpass123")
+        self.activity = Activity.objects.create(
+            strava_id=88802,
+            name="Detail Test Run",
+            sport_type="Run",
+            start_date="2024-05-02T07:00:00Z",
+            distance_meters=10000,
+            moving_time_seconds=3600,
+            achievement_count=2,
+        )
+        Achievement.objects.create(
+            activity=self.activity,
+            segment_name="Big Hill KOM",
+            achievement_type=Achievement.Type.KOM,
+            rank=1,
+        )
+        Achievement.objects.create(
+            activity=self.activity,
+            segment_name="Flat Sprint",
+            achievement_type=Achievement.Type.PR,
+            rank=3,
+        )
+
+    def test_detail_returns_200_and_shows_achievements(self):
+        self.client.force_login(self.user)
+        response = self.client.get(f"/activities/{self.activity.strava_id}/")
+        assert response.status_code == 200
+        assert b"Big Hill KOM" in response.content
+        assert b"Flat Sprint" in response.content
+
+    def test_detail_returns_404_for_unknown_strava_id(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/activities/9999999/")
+        assert response.status_code == 404
+
+    def test_detail_shows_fetch_prompt_when_count_positive_but_no_rows(self):
+        self.client.force_login(self.user)
+        unfetched = Activity.objects.create(
+            strava_id=88803,
+            name="Unfetched Run",
+            sport_type="Run",
+            start_date="2024-05-03T07:00:00Z",
+            achievement_count=3,
+        )
+        response = self.client.get(f"/activities/{unfetched.strava_id}/")
+        assert response.status_code == 200
+        assert b"fetch_achievements" in response.content
+
+    def test_detail_redirects_unauthenticated(self):
+        response = self.client.get(f"/activities/{self.activity.strava_id}/")
+        assert response.status_code == 302
