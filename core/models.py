@@ -193,3 +193,60 @@ class Achievement(models.Model):
             f"{self.get_achievement_type_display()} — "
             f"{self.segment_name} (#{self.rank})"
         )
+
+
+class BestEffort(models.Model):
+    """Personal best time for a standard target distance within a single activity.
+
+    Computed from GPS distance/time streams by the sliding-window algorithm in
+    ``core.best_effort.find_best_effort``.  One row per ``(activity,
+    target_distance_m)`` pair; the ``unique_together`` constraint makes the
+    table safe to rebuild incrementally with ``update_or_create``.
+
+    The ``pace_per_km`` field stores decimal minutes-per-kilometre so that
+    the template can format it without any arithmetic.
+    """
+
+    activity          = models.ForeignKey(
+        Activity,
+        on_delete=models.CASCADE,
+        related_name="best_efforts",
+    )
+    target_distance_m = models.IntegerField(
+        help_text="Target distance in metres (e.g. 5000 for a 5-K window)",
+    )
+    elapsed_time_s    = models.FloatField(
+        help_text="Fastest elapsed time in seconds to cover the target distance",
+    )
+    achieved_at       = models.DateField(
+        help_text="Calendar date on which the activity took place",
+    )
+    pace_per_km       = models.FloatField(
+        help_text="Pace in decimal minutes per kilometre",
+    )
+
+    class Meta:
+        unique_together = ("activity", "target_distance_m")
+        ordering = ["target_distance_m"]
+
+    def __str__(self):
+        """Return a readable label showing the distance bucket and best time."""
+        km = self.target_distance_m / 1000
+        return f"{km:.4g}K best: {self.time_display} on {self.achieved_at}"
+
+    @property
+    def time_display(self) -> str:
+        """Return elapsed time formatted as M:SS or H:MM:SS."""
+        total_s = int(self.elapsed_time_s)
+        hours, remainder = divmod(total_s, 3600)
+        mins, secs = divmod(remainder, 60)
+        if hours:
+            return f"{hours}:{mins:02d}:{secs:02d}"
+        return f"{mins}:{secs:02d}"
+
+    @property
+    def pace_display(self) -> str:
+        """Return pace formatted as M:SS /km."""
+        total_s = int(self.pace_per_km * 60)
+        mins, secs = divmod(total_s, 60)
+        return f"{mins}:{secs:02d}"

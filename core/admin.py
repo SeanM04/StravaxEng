@@ -1,6 +1,6 @@
 """Django admin registrations for StravaToken, SyncLog, Activity, and Achievement."""
 from django.contrib import admin
-from .models import Achievement, Activity, StravaToken, SyncLog
+from .models import Achievement, Activity, BestEffort, StravaToken, SyncLog
 
 
 @admin.register(StravaToken)
@@ -59,6 +59,23 @@ class ActivityAdmin(admin.ModelAdmin):
     search_fields = ("name",)
     readonly_fields = ("synced_at", "raw_data")
     ordering      = ("-start_date",)
+
+
+@admin.register(BestEffort)
+class BestEffortAdmin(admin.ModelAdmin):
+    """Admin view for the BestEffort model.
+
+    Best-effort rows are computed by the ``backfill_best_efforts`` command
+    and should not be created or edited manually.
+    """
+
+    list_display  = (
+        "activity", "target_distance_m", "time_display", "pace_display",
+        "achieved_at",
+    )
+    list_filter   = ("target_distance_m",)
+    search_fields = ("activity__name",)
+    ordering      = ("target_distance_m", "elapsed_time_s")
 
 
 @admin.register(Achievement)

@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from django.contrib.auth.models import User
 from django.test import TestCase
 
+from .best_effort import find_best_effort
 from .models import Achievement, Activity
 from .views import _daily_streaks, _weekly_streaks, _avg_pace_min_per_km
 
@@ -260,3 +261,50 @@ class ActivityDetailViewTests(TestCase):
     def test_detail_redirects_unauthenticated(self):
         response = self.client.get(f"/activities/{self.activity.strava_id}/")
         assert response.status_code == 302
+
+
+# ── Sliding-window best-effort algorithm ─────────────────────────────────────
+
+class FindBestEffortTests(TestCase):
+    def test_exact_match(self):
+        """Single window that exactly covers the target returns its time."""
+        distances = [0.0, 100.0, 200.0, 300.0, 400.0, 500.0]
+        times     = [0,   10,    20,    30,    40,    50]
+        assert find_best_effort(distances, times, 500.0) == 50.0
+
+    def test_no_segment_meets_target(self):
+        """Activity shorter than the target returns None."""
+        distances = [0.0, 100.0, 200.0]
+        times     = [0,   10,    20]
+        assert find_best_effort(distances, times, 500.0) is None
+
+    def test_fastest_window_not_first(self):
+        """The optimal window is later in the activity, not at the start."""
+        # Slow first half, fast second half:
+        #   i=0 → j=5: 500m in 80s
+        #   i=1 → j=6: 500m in 65s
+        #   i=2 → j=7: 500m in 50s  ← fastest
+        distances = [0,   100, 200, 300, 400, 500, 600, 700]
+        times     = [0,   20,  40,  60,  70,  80,  85,  90]
+        assert find_best_effort(distances, times, 500.0) == 50.0
+
+    def test_multiple_1k_windows_returns_minimum(self):
+        """Multiple 1-K windows; the fastest one (not the first) is returned."""
+        # Segment times: 300s, 180s, 180s, 120s, 120s → best = 120s
+        distances = [0,    1000, 2000, 3000, 4000, 5000]
+        times     = [0,    300,  480,  660,  780,  900]
+        assert find_best_effort(distances, times, 1000.0) == 120.0
+
+    def test_empty_arrays_returns_none(self):
+        assert find_best_effort([], [], 1000.0) is None
+
+    def test_single_element_returns_none(self):
+        assert find_best_effort([0.0], [0], 1000.0) is None
+
+    def test_zero_target_returns_none(self):
+        distances = [0.0, 500.0, 1000.0]
+        times     = [0,   60,    120]
+        assert find_best_effort(distances, times, 0.0) is None
+
+    def test_mismatched_lengths_returns_none(self):
+        assert find_best_effort([0.0, 500.0], [0], 500.0) is None

@@ -186,6 +186,34 @@ def strava_get(endpoint: str, params: dict | None = None) -> dict | list:
     return response.json()
 
 
+def fetch_activity_streams(strava_id: int) -> dict[str, list]:
+    """Return distance and time GPS streams for a single activity.
+
+    Calls ``GET /activities/{id}/streams?keys=distance,time&key_by_type=true``
+    and extracts the data arrays for each stream type.
+
+    Args:
+        strava_id: The Strava activity ID.
+
+    Returns:
+        dict with keys ``"distance"`` and ``"time"``, each a list of
+        floats/ints.  Either list may be empty for activities without GPS data
+        (e.g. indoor trainer sessions).
+
+    Raises:
+        RuntimeError: If a valid access token cannot be obtained.
+        requests.HTTPError: If the Strava API returns a non-2xx status.
+    """
+    data = strava_get(
+        f"activities/{strava_id}/streams",
+        params={"keys": "distance,time", "key_by_type": "true"},
+    )
+    return {
+        "distance": data.get("distance", {}).get("data", []),
+        "time":     data.get("time", {}).get("data", []),
+    }
+
+
 def fetch_activities(
     after: int | None = None,
     per_page: int = 100,

@@ -7,10 +7,14 @@ Incremental (default): fetches only activities recorded after the last
   successful sync, keeping API usage low.
 Full (--full flag):    ignores history and fetches everything from Strava.
 """
+import time
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from core.models import Activity, SyncLog
+
 from core import strava_client
+from core.best_effort import compute_and_save
+from core.models import Activity, SyncLog
 
 
 def _transform(item: dict) -> dict:
@@ -122,6 +126,7 @@ class Command(BaseCommand):
         """
         page = 1
         created = updated = 0
+        new_activities: list[Activity] = []
         while True:
             items = strava_client.fetch_activities(
                 after=after_ts, per_page=per_page, page=page
@@ -129,19 +134,49 @@ class Command(BaseCommand):
             if not items:
                 break
             for item in items:
-                _, is_new = Activity.objects.update_or_create(
+                activity, is_new = Activity.objects.update_or_create(
                     strava_id=item["id"],
                     defaults=_transform(item),
                 )
                 if is_new:
                     created += 1
+                    new_activities.append(activity)
                 else:
                     updated += 1
             self.stdout.write(f"  Page {page}: {len(items)} activities processed")
             if len(items) < per_page:
                 break  # last page
             page += 1
-        return created, updated, page
+        return created, updated, page, new_activities
+
+    def _compute_best_efforts(self, activities: list) -> None:
+        """Fetch GPS streams and compute best efforts for newly-synced activities.
+
+        Rate-aware: sleeps 1 second between stream API calls and pauses 15
+        minutes after every 80 calls to respect Strava's rate limit.
+        Activities shorter than 1 km are silently skipped.
+
+        Args:
+            activities: List of ``Activity`` instances created during this sync.
+        """
+        from core.best_effort import TARGET_DISTANCES_M as _TARGETS
+        eligible = [a for a in activities if a.distance_meters >= min(_TARGETS)]
+        if not eligible:
+            return
+        n = len(eligible)
+        self.stdout.write(
+            f"  Computing best efforts for {n} new activit{'y' if n == 1 else 'ies'}…"
+        )
+        for i, activity in enumerate(eligible, 1):
+            if i > 1 and (i - 1) % 80 == 0:
+                self.stdout.write("    Rate-limit pause — waiting 15 min…")
+                time.sleep(900)
+            c, u = compute_and_save(activity)
+            if c + u > 0:
+                self.stdout.write(
+                    f"    {activity.name[:40]}: {c} new, {u} updated best efforts"
+                )
+            time.sleep(1)
 
     def handle(self, *_args, **options):
         """Execute the ETL pipeline and write results to the SyncLog.
@@ -156,9 +191,10 @@ class Command(BaseCommand):
         after_ts = self._get_cutoff_timestamp(full)
         log      = SyncLog.objects.create(incremental=not full)
 
+        new_activities: list = []
         created = updated = pages = 0
         try:
-            created, updated, pages = self._run_etl(after_ts, per_page)
+            created, updated, pages, new_activities = self._run_etl(after_ts, per_page)
             log.status = SyncLog.Status.SUCCESS
         except Exception as exc:  # noqa: BLE001 — all errors must be recorded in SyncLog
             log.status = SyncLog.Status.FAILED
@@ -172,6 +208,7 @@ class Command(BaseCommand):
             log.save()
 
         if log.status == SyncLog.Status.SUCCESS:
+            self._compute_best_efforts(new_activities)
             self.stdout.write(self.style.SUCCESS(
                 f"Done: {created} created, {updated} updated across {pages} page(s)."
             ))

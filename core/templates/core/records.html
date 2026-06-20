@@ -66,6 +66,48 @@
 
 </div>
 
+<!-- Personal Bests from GPS streams -->
+<p class="section-title">Personal Bests (GPS Sliding Window)</p>
+<div class="card">
+  {% if personal_bests_exist %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Distance</th>
+          <th>Best Time</th>
+          <th>Pace /km</th>
+          <th>Activity</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pb in personal_bests %}
+        {% if pb.best %}
+        <tr>
+          <td><strong>{{ pb.label }}</strong></td>
+          <td>{{ pb.best.time_display }}</td>
+          <td>{{ pb.best.pace_display }} /km</td>
+          <td>
+            <a href="{% url 'activity_detail' pb.best.activity.strava_id %}" class="activity-link">
+              {{ pb.best.activity.name|truncatechars:35 }}
+            </a>
+          </td>
+          <td>{{ pb.best.achieved_at|date:"M d, Y" }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    No GPS best-effort data yet.<br>
+    Run <code>python manage.py backfill_best_efforts</code> to compute personal bests from activity streams.
+  </div>
+  {% endif %}
+</div>
+
 <!-- Sport breakdown -->
 <div class="card">
   <div class="card-title">Sport Breakdown</div>

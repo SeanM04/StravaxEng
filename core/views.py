@@ -9,7 +9,8 @@ from django.db.models.functions import TruncWeek
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 
-from .models import Activity, SyncLog, StravaToken
+from .best_effort import DISTANCE_LABELS, TARGET_DISTANCES_M
+from .models import Activity, BestEffort, SyncLog, StravaToken
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
@@ -319,6 +320,22 @@ def records(request):
         .annotate(count=Count("id"), total_km=Sum("distance_meters")).order_by("-count")
     )
 
+    personal_bests = [
+        {
+            "label":    DISTANCE_LABELS[t],
+            "target_m": t,
+            "best": (
+                BestEffort.objects
+                .filter(target_distance_m=t)
+                .select_related("activity")
+                .order_by("elapsed_time_s")
+                .first()
+            ),
+        }
+        for t in TARGET_DISTANCES_M
+    ]
+    personal_bests_exist = any(pb["best"] is not None for pb in personal_bests)
+
     return render(request, "core/records.html", {
         "active_page": "records", "page_title": "Records & Streaks",
         "longest_run": longest_run, "highest_elevation": highest_elevation,
@@ -327,6 +344,8 @@ def records(request):
         "current_weekly_streak": current_weekly_streak,
         "longest_weekly_streak": longest_weekly_streak,
         "sport_breakdown": sport_breakdown,
+        "personal_bests": personal_bests,
+        "personal_bests_exist": personal_bests_exist,
     })
 
 
