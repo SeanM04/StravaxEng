@@ -38,3 +38,6 @@ Thumbs.db
 
 # Migrations bytecode (keep the .py files, skip compiled)
 core/migrations/__pycache__/
+
+# Personal activity data — contains real Strava activity records
+mcp_activities.json
