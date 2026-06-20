@@ -1,0 +1,85 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+
+<!-- Token status -->
+<div class="card">
+  <div class="card-title">Strava Connection</div>
+  {% if has_token %}
+    <div class="status-row" style="margin-bottom:1rem;">
+      <span class="dot {% if token_expired %}dot-red{% else %}dot-green{% endif %}"></span>
+      <strong>{% if token_expired %}Token expired{% else %}Token valid{% endif %}</strong>
+    </div>
+    <table style="font-size:.875rem;border-collapse:collapse;width:100%;">
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:.5rem .75rem;color:#6b7280;width:180px;">Athlete ID</td>
+        <td style="padding:.5rem .75rem;font-family:monospace;">{{ token.athlete_id }}</td>
+      </tr>
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:.5rem .75rem;color:#6b7280;">Access Token</td>
+        <td style="padding:.5rem .75rem;font-family:monospace;color:#9ca3af;">{{ token.access_token|slice:":16" }}…</td>
+      </tr>
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:.5rem .75rem;color:#6b7280;">Refresh Token</td>
+        <td style="padding:.5rem .75rem;font-family:monospace;color:#9ca3af;">{{ token.refresh_token|slice:":16" }}…</td>
+      </tr>
+      <tr style="border-bottom:1px solid #f3f4f6;">
+        <td style="padding:.5rem .75rem;color:#6b7280;">Expires At</td>
+        <td style="padding:.5rem .75rem;font-family:monospace;">Unix {{ token.expires_at }}</td>
+      </tr>
+      <tr>
+        <td style="padding:.5rem .75rem;color:#6b7280;">Last Updated</td>
+        <td style="padding:.5rem .75rem;">{{ token.updated_at|date:"M d, Y H:i" }} UTC</td>
+      </tr>
+    </table>
+
+    {% if token_expired %}
+    <div class="insight-card" style="margin-top:1.25rem;border-left-color:#ef4444;">
+      <div class="ic-header" style="color:#ef4444;">Token Refresh Required</div>
+      <p>
+        Run <code>python get_strava_token.py</code> in your terminal to go through the OAuth flow and
+        get a fresh token pair, then run <code>python manage.py bootstrap_token</code> to update the DB.
+      </p>
+    </div>
+    {% endif %}
+
+  {% else %}
+    <div class="insight-card" style="border-left-color:#f59e0b;">
+      <div class="ic-header" style="color:#f59e0b;">No Token Found</div>
+      <p>
+        No Strava token has been seeded yet. Run <code>python get_strava_token.py</code> to
+        complete the OAuth flow, then <code>python manage.py bootstrap_token</code> to store
+        the token in the database.
+      </p>
+    </div>
+  {% endif %}
+</div>
+
+<!-- App info -->
+<div class="card">
+  <div class="card-title">App Configuration</div>
+  <table style="font-size:.875rem;border-collapse:collapse;width:100%;">
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td style="padding:.5rem .75rem;color:#6b7280;width:180px;">Project</td>
+      <td style="padding:.5rem .75rem;">StravaXEng</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td style="padding:.5rem .75rem;color:#6b7280;">Athlete</td>
+      <td style="padding:.5rem .75rem;">Sean Mukariri — Sandton, South Africa</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td style="padding:.5rem .75rem;color:#6b7280;">Watch</td>
+      <td style="padding:.5rem .75rem;">HUAWEI WATCH GT 5 (HR sync via Huawei Health disabled)</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f3f4f6;">
+      <td style="padding:.5rem .75rem;color:#6b7280;">Stack</td>
+      <td style="padding:.5rem .75rem;">Django 4.2 · PostgreSQL · Chart.js 4.4</td>
+    </tr>
+    <tr>
+      <td style="padding:.5rem .75rem;color:#6b7280;">Strava Client ID</td>
+      <td style="padding:.5rem .75rem;font-family:monospace;">259809</td>
+    </tr>
+  </table>
+</div>
+
+{% endblock %}

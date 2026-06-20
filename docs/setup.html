@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Setup — StravaXEng Docs</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<aside class="sidebar">
+  <a class="sidebar-brand" href="index.html">
+    <div class="logo">
+      <svg width="18" height="18" viewBox="0 0 64 64" fill="none">
+        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <span>StravaXEng Docs</span>
+  </a>
+  <nav>
+    <div class="nav-section">Getting Started</div>
+    <a href="index.html">Overview</a>
+    <a href="setup.html" class="active">Setup</a>
+
+    <div class="nav-section">Reference</div>
+    <a href="architecture.html">Architecture</a>
+    <a href="strava-api.html">Strava API</a>
+    <a href="models.html">Models</a>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="management-commands.html">Management Commands</a>
+  </nav>
+  <div class="sidebar-footer">StravaXEng &mdash; 2026</div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div class="breadcrumb">
+      <a href="index.html">Docs</a>
+      <span class="sep">/</span>
+      <span>Setup</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <h1>Setup</h1>
+    <p class="page-lead">Everything you need to get StravaXEng running locally from scratch.</p>
+
+    <h2>Prerequisites</h2>
+    <ul>
+      <li>Python 3.11+</li>
+      <li>PostgreSQL (local or remote)</li>
+      <li>A Strava API application — see <a href="strava-api.html">Strava API</a></li>
+    </ul>
+
+    <h2>1 — Clone the repository</h2>
+    <pre><code>git clone &lt;repo-url&gt;
+cd StravaXeng</code></pre>
+
+    <h2>2 — Create and activate the virtual environment</h2>
+    <pre><code># Windows
+python -m venv .venv
+.venv\Scripts\activate
+
+# macOS / Linux
+python -m venv .venv
+source .venv/bin/activate</code></pre>
+
+    <h2>3 — Install dependencies</h2>
+    <pre><code>pip install -r requirements.txt</code></pre>
+
+    <div class="callout">
+      <strong>Packages installed:</strong> Django 4.2, requests, python-dotenv, psycopg2-binary.
+    </div>
+
+    <h2>4 — Configure environment variables</h2>
+    <p>Edit <code>.env</code> in the project root. All variables are listed below:</p>
+
+    <pre><code># Strava
+STRAVA_CLIENT_ID=&lt;your client id&gt;
+STRAVA_CLIENT_SECRET=&lt;your client secret&gt;
+STRAVA_REFRESH_TOKEN=&lt;your refresh token&gt;
+
+# Django
+SECRET_KEY=&lt;long random string&gt;
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+# PostgreSQL
+DB_NAME=stravaxeng
+DB_USER=postgres
+DB_PASSWORD=&lt;your password&gt;
+DB_HOST=localhost
+DB_PORT=5432</code></pre>
+
+    <p>Generate a <code>SECRET_KEY</code>:</p>
+    <pre><code>python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"</code></pre>
+
+    <h2>5 — Create the PostgreSQL database</h2>
+    <pre><code>-- run in psql
+CREATE DATABASE stravaxeng;</code></pre>
+
+    <h2>6 — Run migrations</h2>
+    <pre><code>python manage.py migrate</code></pre>
+
+    <h2>7 — Create an admin superuser (optional)</h2>
+    <pre><code>python manage.py createsuperuser</code></pre>
+
+    <h2>8 — Sync activities from Strava</h2>
+    <pre><code># one page = 30 activities
+python manage.py sync_activities
+
+# fetch more pages
+python manage.py sync_activities --pages 5</code></pre>
+
+    <p>See <a href="management-commands.html">Management Commands</a> for details.</p>
+
+    <h2>9 — Start the development server</h2>
+    <pre><code>python manage.py runserver</code></pre>
+
+    <div class="card-grid" style="margin-top:1.5rem">
+      <div class="card">
+        <div class="card-title">Dashboard</div>
+        <p><a href="http://localhost:8000" target="_blank">http://localhost:8000</a></p>
+      </div>
+      <div class="card">
+        <div class="card-title">Admin panel</div>
+        <p><a href="http://localhost:8000/admin" target="_blank">http://localhost:8000/admin</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

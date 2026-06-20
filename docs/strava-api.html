@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strava API — StravaXEng Docs</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<aside class="sidebar">
+  <a class="sidebar-brand" href="index.html">
+    <div class="logo">
+      <svg width="18" height="18" viewBox="0 0 64 64" fill="none">
+        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <span>StravaXEng Docs</span>
+  </a>
+  <nav>
+    <div class="nav-section">Getting Started</div>
+    <a href="index.html">Overview</a>
+    <a href="setup.html">Setup</a>
+    <div class="nav-section">Reference</div>
+    <a href="architecture.html">Architecture</a>
+    <a href="strava-api.html" class="active">Strava API</a>
+    <a href="models.html">Models</a>
+    <a href="dashboard.html">UI &mdash; Pages</a>
+    <a href="management-commands.html">Management Commands</a>
+  </nav>
+  <div class="sidebar-footer">StravaXEng &mdash; 2026</div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div class="breadcrumb">
+      <a href="index.html">Docs</a>
+      <span class="sep">/</span>
+      <span>Strava API</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <h1>Strava API</h1>
+    <p class="page-lead">OAuth2 flow, rolling refresh token design, and endpoints used.</p>
+
+    <h2>Getting credentials</h2>
+    <ol>
+      <li>Go to <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener noreferrer">strava.com/settings/api</a> and create an application.</li>
+      <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into <code>.env</code>.</li>
+      <li>Run the OAuth flow below to get a valid token pair stored in the database.</li>
+    </ol>
+
+    <h2>OAuth2 authorization flow</h2>
+    <p>
+      Strava uses OAuth2 with <strong>rolling refresh tokens</strong>: every call to
+      <code>/oauth/token</code> returns a brand-new refresh token and invalidates the previous one.
+      The token pair must be persisted to the <code>StravaToken</code> DB model on every exchange
+      — never rely solely on <code>.env</code>.
+    </p>
+
+    <h3>Recommended: management command</h3>
+    <pre><code>python manage.py get_strava_token</code></pre>
+    <p>This command handles the full flow interactively:</p>
+    <ol>
+      <li>Opens your browser to the Strava authorization page.</li>
+      <li>You click <strong>Authorize</strong> — Strava redirects to <code>http://localhost/?code=XXXX</code> (page won't load — that's expected).</li>
+      <li>Copy the full URL from the address bar and paste it into the terminal.</li>
+      <li>The command exchanges the code for tokens and saves the pair directly to <code>StravaToken</code> in the DB.</li>
+    </ol>
+    <p>No <code>.env</code> editing required. After this runs, <code>sync_activities</code> is ready.</p>
+
+    <h3>Manual alternative</h3>
+    <p><strong>Step 1</strong> — open this URL in a browser:</p>
+    <pre><code>https://www.strava.com/oauth/authorize
+  ?client_id=&lt;YOUR_CLIENT_ID&gt;
+  &amp;redirect_uri=http://localhost
+  &amp;response_type=code
+  &amp;approval_prompt=force
+  &amp;scope=activity:read_all</code></pre>
+
+    <p><strong>Step 2</strong> — exchange the code:</p>
+    <pre><code>curl -X POST https://www.strava.com/oauth/token \
+  -d client_id=&lt;YOUR_CLIENT_ID&gt; \
+  -d client_secret=&lt;YOUR_CLIENT_SECRET&gt; \
+  -d code=&lt;CODE_FROM_STEP_1&gt; \
+  -d grant_type=authorization_code</code></pre>
+
+    <p>Save the returned <code>refresh_token</code> to <code>.env</code>, then run:</p>
+    <pre><code>python manage.py bootstrap_token</code></pre>
+
+    <h2>Token refresh logic</h2>
+    <p>File: <code>core/strava_client.py</code></p>
+    <p>
+      <code>get_access_token()</code> reads the <code>StravaToken</code> row. If the access token
+      is within 5 minutes of expiry it posts a refresh grant and writes the new pair back:
+    </p>
+    <pre><code>token = StravaToken.objects.get(athlete_id=ATHLETE_ID)
+if token.is_expired:
+    response = requests.post(STRAVA_TOKEN_URL, data={
+        "client_id":     CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "refresh_token": token.refresh_token,
+        "grant_type":    "refresh_token",
+    })
+    data = response.json()
+    token.access_token  = data["access_token"]
+    token.refresh_token = data["refresh_token"]   # rotated — must save
+    token.expires_at    = data["expires_at"]
+    token.save(update_fields=[...])
+return token.access_token</code></pre>
+
+    <div class="callout">
+      <strong>Why not store the refresh token in .env?</strong>
+      Strava invalidates the old refresh token the moment a new one is issued. If the rotated
+      token is discarded, the next refresh call returns <code>400 Bad Request: refresh_token invalid</code>.
+      The DB row is the only reliable store.
+    </div>
+
+    <h2>Endpoints used</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Endpoint</th><th>Method</th><th>Purpose</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>/oauth/token</code></td><td>POST</td><td>Authorization-code exchange and refresh-token rotation</td></tr>
+          <tr><td><code>/api/v3/athlete/activities</code></td><td>GET</td><td>List authenticated athlete's activities</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Activity list parameters</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>per_page</code></td><td>int (max 200)</td><td>Activities per page</td></tr>
+          <tr><td><code>page</code></td><td>int</td><td>Page number (1-indexed)</td></tr>
+          <tr><td><code>after</code></td><td>Unix timestamp</td><td>Return only activities after this time (incremental sync cutoff)</td></tr>
+          <tr><td><code>before</code></td><td>Unix timestamp</td><td>Return only activities before this time</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Rate limits</h2>
+    <p>
+      Strava enforces <strong>100 requests / 15 minutes</strong> and <strong>1&nbsp;000 requests / day</strong>.
+      Each <code>sync_activities</code> page costs 1 API call. Token refresh is free if the access
+      token is still valid. Syncing 10 pages costs 10 requests.
+    </p>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,128 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+
+<!-- Top-line health stats -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="s-label">Total Activities</div>
+    <div class="s-value">{{ total_activities }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Total Runs</div>
+    <div class="s-value">{{ total_runs }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Total Syncs</div>
+    <div class="s-value">{{ total_syncs }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Success Rate</div>
+    {% if success_rate is not None %}
+      <div class="s-value">{{ success_rate }}%</div>
+    {% else %}
+      <div class="s-value">—</div>
+      <div class="s-note">No syncs yet</div>
+    {% endif %}
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Last Successful Sync</div>
+    {% if last_success %}
+      <div class="s-value" style="font-size:1rem;">{{ last_success.finished_at|date:"M d, Y" }}</div>
+      <div class="s-unit">{{ last_success.finished_at|date:"H:i" }} UTC</div>
+    {% else %}
+      <div class="s-value">—</div>
+    {% endif %}
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Token Status</div>
+    {% if token %}
+      {% if token.is_expired %}
+        <div class="s-value" style="font-size:1rem;color:#ef4444;">Expired</div>
+      {% else %}
+        <div class="s-value" style="font-size:1rem;color:#10b981;">Valid</div>
+      {% endif %}
+    {% else %}
+      <div class="s-value" style="font-size:1rem;color:#9ca3af;">No token</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Sync log table -->
+<div class="card">
+  <div class="card-title">Recent Sync Runs</div>
+  {% if logs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Started</th><th>Finished</th><th>Status</th>
+          <th>Type</th><th>Created</th><th>Updated</th>
+          <th>Pages</th><th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.started_at|date:"M d H:i" }}</td>
+          <td>{% if log.finished_at %}{{ log.finished_at|date:"M d H:i" }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>
+            <span class="badge badge-{{ log.status }}">{{ log.status }}</span>
+          </td>
+          <td>{% if log.incremental %}Incremental{% else %}Full{% endif %}</td>
+          <td>{{ log.activities_created }}</td>
+          <td>{{ log.activities_updated }}</td>
+          <td>{{ log.pages_fetched }}</td>
+          <td>
+            {% if log.error_message %}
+              <span title="{{ log.error_message }}" style="color:#ef4444;cursor:help;">
+                {{ log.error_message|truncatechars:40 }}
+              </span>
+            {% else %}
+              <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    No sync runs recorded yet. Run <code>python manage.py sync_activities</code> to start.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Quick commands -->
+<div class="card">
+  <div class="card-title">Useful Commands</div>
+  <div style="display:flex;flex-direction:column;gap:.6rem;">
+    <div>
+      <code style="background:#f3f4f6;padding:.3rem .6rem;border-radius:4px;font-size:.85rem;color:#374151;">
+        python manage.py sync_activities
+      </code>
+      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Incremental sync from Strava API</span>
+    </div>
+    <div>
+      <code style="background:#f3f4f6;padding:.3rem .6rem;border-radius:4px;font-size:.85rem;color:#374151;">
+        python manage.py sync_activities --full
+      </code>
+      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Full re-sync (ignore last sync timestamp)</span>
+    </div>
+    <div>
+      <code style="background:#f3f4f6;padding:.3rem .6rem;border-radius:4px;font-size:.85rem;color:#374151;">
+        python manage.py seed_from_mcp --file mcp_activities.json
+      </code>
+      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Seed from MCP JSON export (OAuth bypass)</span>
+    </div>
+    <div>
+      <code style="background:#f3f4f6;padding:.3rem .6rem;border-radius:4px;font-size:.85rem;color:#374151;">
+        python manage.py bootstrap_token
+      </code>
+      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Seed StravaToken table from .env</span>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

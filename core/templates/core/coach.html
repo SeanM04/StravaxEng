@@ -1,0 +1,91 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+
+<div class="insight-grid">
+
+  <div class="insight-card">
+    <div class="ic-header">Weekly Volume</div>
+    <p>
+      Your average weekly running volume is <strong>{{ avg_weekly_km }} km</strong>.
+      {% if avg_weekly_km >= 40 %}
+        That's a solid training load — make sure to include easy recovery days.
+      {% elif avg_weekly_km >= 20 %}
+        Good base building. Consider adding one longer run each week to build endurance.
+      {% else %}
+        You're in early-base territory. Focus on consistency before adding distance.
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="insight-card">
+    <div class="ic-header">Pace Trend</div>
+    <p>
+      {% if pace_trend == "improving" %}
+        Your pace over the last 10 runs ({{ latest_pace }} min/km avg) is <strong>faster</strong> than the previous 10.
+        Great progress — keep the workload manageable to avoid overreaching.
+      {% elif pace_trend == "declining" %}
+        Your pace over the last 10 runs ({{ latest_pace }} min/km avg) has <strong>slowed</strong> compared to the previous 10.
+        This could indicate fatigue, higher volume, or terrain changes — a rest week may help.
+      {% else %}
+        Not enough run history yet to determine a pace trend. Keep logging!
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="insight-card">
+    <div class="ic-header">Long Run Habit</div>
+    <p>
+      You have <strong>{{ long_run_count }}</strong> run{{ long_run_count|pluralize }} of 15 km or more
+      out of {{ total_runs }} total runs.
+      {% if long_run_count == 0 %}
+        Adding a weekly long run (15–20 km) is one of the biggest aerobic fitness drivers.
+      {% elif long_run_count >= total_runs|add:"-1" %}
+        You're stacking a lot of long efforts — make sure shorter recovery runs are in the mix.
+      {% else %}
+        Good mix of long and shorter efforts.
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="insight-card">
+    <div class="ic-header">Heart Rate Data</div>
+    <p>
+      Heart rate data is currently unavailable for your activities. Your HUAWEI WATCH GT 5 does
+      not sync HR to Strava via Huawei Health by default.
+      Enable it in <strong>Huawei Health → Connected Apps → Strava</strong> to unlock zone-based
+      training insights here.
+    </p>
+  </div>
+
+</div>
+
+<!-- Recent runs -->
+<div class="card">
+  <div class="card-title">Recent 5 Runs</div>
+  {% if recent_runs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Date</th><th>Distance</th><th>Pace /km</th><th>Time</th><th>Elevation</th></tr>
+      </thead>
+      <tbody>
+        {% for r in recent_runs %}
+        <tr>
+          <td>{{ r.name|truncatechars:35 }}</td>
+          <td>{{ r.start_date|date:"M d, Y" }}</td>
+          <td>{{ r.distance_km }} km</td>
+          <td>{{ r.pace_per_km }}</td>
+          <td>{{ r.moving_time_display }}</td>
+          <td>{{ r.total_elevation_gain|floatformat:0 }} m</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">No run data found.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

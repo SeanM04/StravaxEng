@@ -1,0 +1,90 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+
+<!-- Daily streaks -->
+<p class="section-title">Activity Streaks</p>
+<div class="streak-grid">
+  <div class="streak-card">
+    <div class="st-num">{{ current_streak }}</div>
+    <div class="st-label">Current Streak (days)</div>
+  </div>
+  <div class="streak-card">
+    <div class="st-num">{{ longest_streak }}</div>
+    <div class="st-label">Longest Streak (days)</div>
+  </div>
+</div>
+
+<!-- Weekly streaks -->
+<p class="section-title">Weekly Streaks</p>
+<div class="streak-grid">
+  <div class="streak-card">
+    <div class="st-num">{{ current_weekly_streak }}</div>
+    <div class="st-label">Current Weekly Streak (weeks)</div>
+  </div>
+  <div class="streak-card">
+    <div class="st-num">{{ longest_weekly_streak }}</div>
+    <div class="st-label">Longest Weekly Streak (weeks)</div>
+  </div>
+</div>
+
+<!-- PRs -->
+<p class="section-title">Personal Records</p>
+<div class="record-grid">
+
+  {% if longest_run %}
+  <div class="record-card">
+    <div class="r-label">Longest Run</div>
+    <div class="r-value">{{ longest_run.distance_km }} km</div>
+    <div class="r-sub">{{ longest_run.name }} · {{ longest_run.start_date|date:"M d, Y" }}</div>
+  </div>
+  {% endif %}
+
+  {% if fastest_run %}
+  <div class="record-card">
+    <div class="r-label">Fastest Pace (≥ 3 km)</div>
+    <div class="r-value">{{ fastest_run.pace_per_km }} /km</div>
+    <div class="r-sub">{{ fastest_run.name }} · {{ fastest_run.start_date|date:"M d, Y" }}</div>
+  </div>
+  {% endif %}
+
+  {% if highest_elevation %}
+  <div class="record-card">
+    <div class="r-label">Most Elevation</div>
+    <div class="r-value">{{ highest_elevation.total_elevation_gain|floatformat:0 }} m</div>
+    <div class="r-sub">{{ highest_elevation.name }} · {{ highest_elevation.start_date|date:"M d, Y" }}</div>
+  </div>
+  {% endif %}
+
+  {% if most_kudos %}
+  <div class="record-card">
+    <div class="r-label">Most Kudos</div>
+    <div class="r-value">{{ most_kudos.kudos_count }}</div>
+    <div class="r-sub">{{ most_kudos.name }} · {{ most_kudos.start_date|date:"M d, Y" }}</div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- Sport breakdown -->
+<div class="card">
+  <div class="card-title">Sport Breakdown</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Sport</th><th>Activities</th><th>Total Distance</th></tr>
+      </thead>
+      <tbody>
+        {% for s in sport_breakdown %}
+        <tr>
+          <td><span class="badge badge-{{ s.sport_type|lower }}">{{ s.sport_type }}</span></td>
+          <td>{{ s.count }}</td>
+          <td>{% if s.total_km %}{{ s.total_km|floatformat:"-1" }} m{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

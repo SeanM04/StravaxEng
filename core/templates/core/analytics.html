@@ -1,0 +1,139 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+
+<!-- Summary stats -->
+<div class="stat-grid" style="margin-bottom:1.75rem;">
+  <div class="stat-card">
+    <div class="s-label">Total Runs</div>
+    <div class="s-value">{{ run_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Total Run Distance</div>
+    <div class="s-value">{{ total_run_km|floatformat:1 }}</div>
+    <div class="s-unit">km</div>
+  </div>
+</div>
+
+<!-- Weekly volume chart -->
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Weekly Volume (km)</div>
+    <div class="chart-wrap">
+      <canvas id="weeklyChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Weekly Activity Count</div>
+    <div class="chart-wrap">
+      <canvas id="countChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Pace trend -->
+<div class="card">
+  <div class="card-title">Pace Trend — Runs (min/km)</div>
+  <div class="chart-wrap" style="height:220px;">
+    <canvas id="paceChart"></canvas>
+  </div>
+</div>
+
+<script>
+const ORANGE   = "#fc4c02";
+const ORANGE_A = "rgba(252,76,2,.15)";
+const BLUE     = "#3b82f6";
+const BLUE_A   = "rgba(59,130,246,.15)";
+
+const baseOpts = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+    y: { grid: { color: "#f0f0f0" }, ticks: { font: { size: 11 } }, beginAtZero: true }
+  }
+};
+
+new Chart(document.getElementById("weeklyChart"), {
+  type: "bar",
+  data: {
+    labels: {{ week_labels|safe }},
+    datasets: [{
+      label: "km",
+      data: {{ week_km|safe }},
+      backgroundColor: ORANGE_A,
+      borderColor: ORANGE,
+      borderWidth: 2,
+      borderRadius: 4,
+    }]
+  },
+  options: { ...baseOpts }
+});
+
+new Chart(document.getElementById("countChart"), {
+  type: "bar",
+  data: {
+    labels: {{ week_labels|safe }},
+    datasets: [{
+      label: "activities",
+      data: {{ week_counts|safe }},
+      backgroundColor: BLUE_A,
+      borderColor: BLUE,
+      borderWidth: 2,
+      borderRadius: 4,
+    }]
+  },
+  options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, ticks: { stepSize: 1 } } } }
+});
+
+new Chart(document.getElementById("paceChart"), {
+  type: "line",
+  data: {
+    labels: {{ pace_labels|safe }},
+    datasets: [{
+      label: "Pace (min/km)",
+      data: {{ pace_data|safe }},
+      borderColor: BLUE,
+      backgroundColor: BLUE_A,
+      tension: .35,
+      fill: true,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+    }]
+  },
+  options: {
+    ...baseOpts,
+    scales: {
+      ...baseOpts.scales,
+      y: {
+        ...baseOpts.scales.y,
+        reverse: true,
+        ticks: {
+          callback: v => {
+            const m = Math.floor(v);
+            const s = Math.round((v - m) * 60);
+            return `${m}:${String(s).padStart(2,"0")}`;
+          },
+          font: { size: 11 }
+        }
+      }
+    },
+    plugins: {
+      ...baseOpts.plugins,
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const v = ctx.parsed.y;
+            const m = Math.floor(v);
+            const s = Math.round((v - m) * 60);
+            return `${m}:${String(s).padStart(2,"0")} /km`;
+          }
+        }
+      }
+    }
+  }
+});
+</script>
+{% endblock %}

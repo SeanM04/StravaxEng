@@ -1,0 +1,40 @@
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md
+
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+env/
+
+# Django
+*.log
+db.sqlite3
+staticfiles/
+
+# IDE
+.vscode/
+.idea/
+
+# Local dev server logs
+server.log
+server_err.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Migrations bytecode (keep the .py files, skip compiled)
+core/migrations/__pycache__/

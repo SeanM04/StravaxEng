@@ -1,0 +1,107 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+
+<!-- Filter bar -->
+<div class="card">
+  <form method="get" class="filter-bar">
+    <input type="text" name="q" value="{{ search_query }}" placeholder="Search activities…" style="min-width:200px;">
+    <select name="sport">
+      <option value="">All sports</option>
+      {% for s in sport_types %}
+        <option value="{{ s }}" {% if s == current_sport %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+    {% if current_sport or search_query %}
+      <a href="{% url 'activities' %}" class="btn btn-ghost">Clear</a>
+    {% endif %}
+    <span class="muted" style="margin-left:auto;font-size:.8rem;">
+      {{ page_obj.paginator.count }} activit{{ page_obj.paginator.count|pluralize:"y,ies" }}
+    </span>
+  </form>
+</div>
+
+<!-- Table -->
+<div class="card" style="padding:0;overflow:hidden;">
+  {% if page_obj.object_list %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Sport</th>
+          <th>
+            <a href="?sort={% if current_sort == '-date' %}date{% else %}-date{% endif %}&sport={{ current_sport }}&q={{ search_query }}">
+              Date {% if current_sort == '-date' %}↓{% elif current_sort == 'date' %}↑{% endif %}
+            </a>
+          </th>
+          <th>
+            <a href="?sort={% if current_sort == '-dist' %}dist{% else %}-dist{% endif %}&sport={{ current_sport }}&q={{ search_query }}">
+              Dist (km) {% if current_sort == '-dist' %}↓{% elif current_sort == 'dist' %}↑{% endif %}
+            </a>
+          </th>
+          <th>Pace /km</th>
+          <th>Time</th>
+          <th>
+            <a href="?sort={% if current_sort == '-elev' %}elev{% else %}-elev{% endif %}&sport={{ current_sport }}&q={{ search_query }}">
+              Elev (m) {% if current_sort == '-elev' %}↓{% elif current_sort == 'elev' %}↑{% endif %}
+            </a>
+          </th>
+          <th>
+            <a href="?sort={% if current_sort == '-cadence' %}cadence{% else %}-cadence{% endif %}&sport={{ current_sport }}&q={{ search_query }}">
+              Cadence {% if current_sort == '-cadence' %}↓{% elif current_sort == 'cadence' %}↑{% endif %}
+            </a>
+          </th>
+          <th>HR</th>
+          <th>
+            <a href="?sort={% if current_sort == '-kudos' %}kudos{% else %}-kudos{% endif %}&sport={{ current_sport }}&q={{ search_query }}">
+              Kudos {% if current_sort == '-kudos' %}↓{% elif current_sort == 'kudos' %}↑{% endif %}
+            </a>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in page_obj.object_list %}
+        <tr>
+          <td>{{ a.name|default:"—"|truncatechars:40 }}</td>
+          <td><span class="badge badge-{{ a.sport_type|lower }}">{{ a.sport_type }}</span></td>
+          <td>{{ a.start_date|date:"M d, Y" }}</td>
+          <td>{{ a.distance_km }}</td>
+          <td>{{ a.pace_per_km }}</td>
+          <td>{{ a.moving_time_display }}</td>
+          <td>{{ a.total_elevation_gain|floatformat:0 }}</td>
+          <td>{% if a.average_cadence %}{{ a.average_cadence|floatformat:0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{% if a.average_heartrate %}{{ a.average_heartrate|floatformat:0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>{{ a.kudos_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if page_obj.has_other_pages %}
+  <div class="pagination" style="padding:1rem;">
+    {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}&sort={{ current_sort }}&sport={{ current_sport }}&q={{ search_query }}">‹ Prev</a>
+    {% endif %}
+    {% for num in page_obj.paginator.page_range %}
+      {% if page_obj.number == num %}
+        <span class="current">{{ num }}</span>
+      {% elif num >= page_obj.number|add:"-3" and num <= page_obj.number|add:"3" %}
+        <a href="?page={{ num }}&sort={{ current_sort }}&sport={{ current_sport }}&q={{ search_query }}">{{ num }}</a>
+      {% endif %}
+    {% endfor %}
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}&sort={{ current_sort }}&sport={{ current_sport }}&q={{ search_query }}">Next ›</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-state">No activities match your filters.</div>
+  {% endif %}
+</div>
+
+{% endblock %}

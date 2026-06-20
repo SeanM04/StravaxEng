@@ -1,0 +1,8 @@
+# Normalise all text files to LF in the repo; git checks out with native endings
+* text=auto eol=lf
+
+# Explicitly binary — never mangle
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
