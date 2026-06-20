@@ -1,9 +1,12 @@
 """
-Seeds the StravaToken table using the refresh token in .env.
+Seeds the StravaToken table using the refresh token stored in .env.
 
-Run this once after completing the OAuth flow with get_strava_token.py.
+This command is the legacy bootstrap path.  Prefer ``get_strava_token`` for
+first-time setup, which performs the full OAuth2 authorization-code flow and
+does not require manually copying a refresh token into .env.
+
 After the first successful run, all future token rotations are handled
-automatically by strava_client.get_access_token().
+automatically by ``strava_client.get_access_token()``.
 """
 import requests
 from django.conf import settings
@@ -12,9 +15,27 @@ from core.models import StravaToken
 
 
 class Command(BaseCommand):
+    """Management command that bootstraps the StravaToken table from .env.
+
+    Exchanges the ``STRAVA_REFRESH_TOKEN`` value in ``.env`` for a live
+    access/refresh token pair via ``POST /oauth/token`` and upserts the
+    result into the ``StravaToken`` table.
+    """
+
     help = "Bootstrap the StravaToken table from the STRAVA_REFRESH_TOKEN in .env."
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **_options):
+        """Execute the token bootstrap exchange.
+
+        Args:
+            *args: Unused positional arguments passed by Django.
+            **options: Unused parsed CLI options.
+
+        Raises:
+            SystemExit: The command writes to stderr and returns early if
+                ``STRAVA_REFRESH_TOKEN`` is not set or if Strava rejects the
+                exchange request.
+        """
         if not settings.STRAVA_REFRESH_TOKEN:
             self.stderr.write(self.style.ERROR(
                 "STRAVA_REFRESH_TOKEN is not set in .env"
@@ -37,20 +58,19 @@ class Command(BaseCommand):
         if not response.ok:
             try:
                 detail = response.json()
-            except Exception:
+            except ValueError:
                 detail = response.text
             self.stderr.write(self.style.ERROR(
                 f"Strava rejected the token ({response.status_code}): {detail}\n"
-                "Run python get_strava_token.py to obtain a fresh refresh token, "
-                "then update STRAVA_REFRESH_TOKEN in .env and retry."
+                "Run python manage.py get_strava_token to obtain a fresh token."
             ))
             return
 
         data = response.json()
-        athlete   = data.get("athlete") or {}
+        athlete    = data.get("athlete") or {}
         athlete_id = athlete.get("id") or 0
 
-        token, created = StravaToken.objects.update_or_create(
+        _, created = StravaToken.objects.update_or_create(
             athlete_id=athlete_id,
             defaults={
                 "access_token":  data["access_token"],

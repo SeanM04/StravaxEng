@@ -6,13 +6,13 @@ Run:
 
 Steps:
   1. Your browser opens the Strava authorization page.
-  2. Click "Authorize" — you're redirected to http://localhost/?code=XXXX
-     (the page fails to load — that's expected).
+  2. Click "Authorize" — you are redirected to http://localhost/?code=XXXX
+     (the page fails to load — that is expected).
   3. Copy the full URL from the address bar and paste it here.
   4. Tokens are saved directly to the StravaToken DB table.
 
-No .env edits needed. After this runs successfully, sync_activities
-and bootstrap_token are not required — the DB is the source of truth.
+No .env edits needed.  After this runs successfully, ``sync_activities``
+and ``bootstrap_token`` are not required — the DB is the source of truth.
 """
 import urllib.parse
 import webbrowser
@@ -25,9 +25,29 @@ from core.models import StravaToken
 
 
 class Command(BaseCommand):
+    """Management command that runs the Strava OAuth2 authorization-code flow.
+
+    Opens the user's browser to Strava's authorization page, prompts for the
+    resulting redirect URL, exchanges the embedded code for a token pair, and
+    persists the tokens to the ``StravaToken`` table.  This is the recommended
+    first-time setup path because it never requires touching ``.env``.
+    """
+
     help = "Run the Strava OAuth2 authorization-code flow and save tokens to the DB."
 
     def handle(self, *args, **options):
+        """Execute the interactive OAuth2 flow.
+
+        Args:
+            *args: Unused positional arguments passed by Django.
+            **options: Unused parsed CLI options.
+
+        Raises:
+            SystemExit: The command writes to stderr and returns early if
+                credentials are missing, the user cancels the browser flow,
+                the redirect URL is malformed, or Strava rejects the code
+                exchange.
+        """
         client_id     = settings.STRAVA_CLIENT_ID
         client_secret = settings.STRAVA_CLIENT_SECRET
 
@@ -39,17 +59,17 @@ class Command(BaseCommand):
 
         # ── Step 1: Build authorization URL ──────────────────────────────────
         params = urllib.parse.urlencode({
-            "client_id":      client_id,
-            "redirect_uri":   "http://localhost",
-            "response_type":  "code",
+            "client_id":       client_id,
+            "redirect_uri":    "http://localhost",
+            "response_type":   "code",
             "approval_prompt": "force",
-            "scope":          "activity:read_all",
+            "scope":           "activity:read_all",
         })
         auth_url = f"https://www.strava.com/oauth/authorize?{params}"
 
         self.stdout.write("\n=== Strava OAuth2 Flow ===\n")
         self.stdout.write("Opening your browser to Strava's authorization page...")
-        self.stdout.write(f"\nIf the browser doesn't open, visit this URL:\n{auth_url}\n")
+        self.stdout.write(f"\nIf the browser doesn't open, visit:\n{auth_url}\n")
         webbrowser.open(auth_url)
 
         self.stdout.write(
@@ -82,7 +102,7 @@ class Command(BaseCommand):
             return
 
         code = query["code"][0]
-        self.stdout.write(f"\nGot authorization code. Exchanging with Strava...")
+        self.stdout.write("\nGot authorization code. Exchanging with Strava...")
 
         # ── Step 3: Exchange code for tokens ──────────────────────────────────
         response = requests.post(
@@ -106,7 +126,7 @@ class Command(BaseCommand):
             ))
             return
 
-        data = response.json()
+        data       = response.json()
         athlete    = data.get("athlete") or {}
         athlete_id = athlete.get("id")
 

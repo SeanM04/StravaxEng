@@ -14,7 +14,14 @@ from core import strava_client
 
 
 def _transform(item: dict) -> dict:
-    """Map a Strava REST API activity dict to Activity model field values."""
+    """Map a Strava REST API activity dict to Activity model field values.
+
+    Args:
+        item: A single activity dict as returned by ``GET /athlete/activities``.
+
+    Returns:
+        dict: Keyword arguments suitable for ``Activity.objects.update_or_create``.
+    """
     return {
         "name":                 item.get("name", ""),
         "sport_type":           item.get("sport_type", "Other"),
@@ -36,9 +43,21 @@ def _transform(item: dict) -> dict:
 
 
 class Command(BaseCommand):
+    """Management command that runs the Strava → PostgreSQL ETL pipeline.
+
+    Creates a ``SyncLog`` entry at the start of each run and updates it with
+    the final status and row counts on completion, regardless of success or
+    failure.
+    """
+
     help = "ETL: pull Strava activities and upsert into PostgreSQL."
 
     def add_arguments(self, parser):
+        """Register ``--full`` and ``--per-page`` CLI arguments.
+
+        Args:
+            parser: The ``argparse.ArgumentParser`` provided by Django.
+        """
         parser.add_argument(
             "--full",
             action="store_true",
@@ -51,83 +70,106 @@ class Command(BaseCommand):
             help="Activities per API page (max 200, default 100).",
         )
 
-    def handle(self, *args, **options):
-        full     = options["full"]
-        per_page = min(options["per_page"], 200)
+    def _get_cutoff_timestamp(self, full: bool) -> int | None:
+        """Determine the Unix timestamp cutoff for an incremental sync.
 
-        # ── Determine incremental cutoff ──────────────────────────────────────
-        after_ts = None
-        if not full:
-            last_ok = (
-                SyncLog.objects
-                .filter(status=SyncLog.Status.SUCCESS)
-                .order_by("-finished_at")
-                .first()
-            )
-            if last_ok and last_ok.finished_at:
-                after_ts = int(last_ok.finished_at.timestamp())
-                self.stdout.write(
-                    f"Incremental sync — fetching activities after "
-                    f"{last_ok.finished_at:%Y-%m-%d %H:%M:%S UTC}"
-                )
-            else:
-                self.stdout.write("No previous sync found — performing full sync.")
-        else:
+        In full mode, always returns ``None`` (no cutoff).  In incremental
+        mode, returns the ``finished_at`` timestamp of the last successful
+        sync, or ``None`` if no successful sync has been recorded yet (which
+        causes the caller to fall back to a full sync automatically).
+
+        Args:
+            full: If ``True``, skip the history lookup and return ``None``.
+
+        Returns:
+            int | None: Unix timestamp to pass as ``?after=`` to the Strava
+            API, or ``None`` to fetch all pages.
+        """
+        if full:
             self.stdout.write("Full sync requested.")
+            return None
+        last_ok = (
+            SyncLog.objects
+            .filter(status=SyncLog.Status.SUCCESS)
+            .order_by("-finished_at")
+            .first()
+        )
+        if last_ok and last_ok.finished_at:
+            self.stdout.write(
+                f"Incremental sync — fetching activities after "
+                f"{last_ok.finished_at:%Y-%m-%d %H:%M:%S UTC}"
+            )
+            return int(last_ok.finished_at.timestamp())
+        self.stdout.write("No previous sync found — performing full sync.")
+        return None
 
-        log = SyncLog.objects.create(incremental=not full)
+    def _run_etl(self, after_ts: int | None, per_page: int) -> tuple[int, int, int]:
+        """Paginate through Strava activities and upsert each one.
 
-        # ── EXTRACT → TRANSFORM → LOAD ────────────────────────────────────────
+        Args:
+            after_ts: Unix timestamp cutoff passed as ``?after=`` to the API,
+                or ``None`` for a full sync.
+            per_page: Number of activities to request per API page (max 200).
+
+        Returns:
+            tuple[int, int, int]: ``(created, updated, pages_fetched)`` counts.
+
+        Raises:
+            Exception: Any exception from ``strava_client`` propagates to the
+                caller so it can be recorded in the ``SyncLog``.
+        """
         page = 1
         created = updated = 0
-
-        try:
-            while True:
-                # Extract
-                items = strava_client.fetch_activities(
-                    after=after_ts,
-                    per_page=per_page,
-                    page=page,
+        while True:
+            items = strava_client.fetch_activities(
+                after=after_ts, per_page=per_page, page=page
+            )
+            if not items:
+                break
+            for item in items:
+                _, is_new = Activity.objects.update_or_create(
+                    strava_id=item["id"],
+                    defaults=_transform(item),
                 )
+                if is_new:
+                    created += 1
+                else:
+                    updated += 1
+            self.stdout.write(f"  Page {page}: {len(items)} activities processed")
+            if len(items) < per_page:
+                break  # last page
+            page += 1
+        return created, updated, page
 
-                if not items:
-                    break
+    def handle(self, *_args, **options):
+        """Execute the ETL pipeline and write results to the SyncLog.
 
-                # Transform + Load (upsert)
-                for item in items:
-                    _, is_new = Activity.objects.update_or_create(
-                        strava_id=item["id"],
-                        defaults=_transform(item),
-                    )
-                    if is_new:
-                        created += 1
-                    else:
-                        updated += 1
+        Args:
+            *_args: Unused positional arguments (required by Django's interface).
+            **options: Parsed CLI options.  Keys used: ``full`` (bool),
+                ``per_page`` (int).
+        """
+        full     = options["full"]
+        per_page = min(options["per_page"], 200)
+        after_ts = self._get_cutoff_timestamp(full)
+        log      = SyncLog.objects.create(incremental=not full)
 
-                self.stdout.write(f"  Page {page}: {len(items)} activities processed")
-
-                if len(items) < per_page:
-                    break  # last page
-                page += 1
-
+        created = updated = pages = 0
+        try:
+            created, updated, pages = self._run_etl(after_ts, per_page)
             log.status = SyncLog.Status.SUCCESS
-
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — all errors must be recorded in SyncLog
             log.status = SyncLog.Status.FAILED
             log.error_message = str(exc)
             self.stderr.write(self.style.ERROR(f"Sync failed: {exc}"))
-
         finally:
             log.finished_at        = timezone.now()
             log.activities_created = created
             log.activities_updated = updated
-            log.pages_fetched      = page
+            log.pages_fetched      = pages
             log.save()
 
         if log.status == SyncLog.Status.SUCCESS:
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"Done: {created} created, {updated} updated "
-                    f"across {page} page(s)."
-                )
-            )
+            self.stdout.write(self.style.SUCCESS(
+                f"Done: {created} created, {updated} updated across {pages} page(s)."
+            ))
