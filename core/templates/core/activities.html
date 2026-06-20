@@ -59,6 +59,11 @@
               Kudos {% if current_sort == '-kudos' %}↓{% elif current_sort == 'kudos' %}↑{% endif %}
             </a>
           </th>
+          <th>
+            <a href="?sort={% if current_sort == '-achievements' %}achievements{% else %}-achievements{% endif %}&sport={{ current_sport }}&q={{ search_query }}">
+              Achievements {% if current_sort == '-achievements' %}↓{% elif current_sort == 'achievements' %}↑{% endif %}
+            </a>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -74,6 +79,7 @@
           <td>{% if a.average_cadence %}{{ a.average_cadence|floatformat:0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
           <td>{% if a.average_heartrate %}{{ a.average_heartrate|floatformat:0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
           <td>{{ a.kudos_count }}</td>
+          <td>{% if a.achievement_count %}{{ a.achievement_count }}{% else %}<span class="muted">—</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -32,6 +32,7 @@ def _aggregate(qs):
         avg_heartrate=Avg("average_heartrate"),
         avg_cadence=Avg("average_cadence"),
         total_count=Count("id"),
+        total_calories=Sum("calories"),
     )
     m = raw["total_distance"] or 0
     s = raw["total_time"] or 0
@@ -179,6 +180,7 @@ _SORT_MAP = {
     "elev": "total_elevation_gain", "-elev": "-total_elevation_gain",
     "kudos": "kudos_count", "-kudos": "-kudos_count",
     "cadence": "average_cadence", "-cadence": "-average_cadence",
+    "achievements": "achievement_count", "-achievements": "-achievement_count",
 }
 
 
@@ -417,7 +419,7 @@ def settings_view(request):
     })
 
 
-def health(request):
+def health(_request):
     """Return a JSON health-check response for uptime monitors.
 
     Checks database connectivity by running a lightweight ORM existence

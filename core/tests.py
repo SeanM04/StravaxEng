@@ -119,3 +119,39 @@ class HealthCheckTests(TestCase):
         data = response.json()
         assert data["status"] == "ok"
         assert data["database"] == "connected"
+
+
+# ── Backfill migration logic ──────────────────────────────────────────────────
+
+class BackfillCaloriesTests(TestCase):
+    def test_calories_extracted_from_raw_data(self):
+        a = Activity.objects.create(
+            strava_id=77777,
+            name="Backfill Test",
+            sport_type="Run",
+            start_date="2024-03-15T07:00:00Z",
+            raw_data={"calories": 512.0, "achievement_count": 3},
+        )
+        raw = a.raw_data or {}
+        a.calories = raw.get("calories")
+        a.achievement_count = raw.get("achievement_count", 0) or 0
+        a.save(update_fields=["calories", "achievement_count"])
+        a.refresh_from_db()
+        assert a.calories == 512.0
+        assert a.achievement_count == 3
+
+    def test_null_calories_when_absent_from_raw_data(self):
+        a = Activity.objects.create(
+            strava_id=77778,
+            name="No Calories",
+            sport_type="Run",
+            start_date="2024-03-16T07:00:00Z",
+            raw_data={},
+        )
+        raw = a.raw_data or {}
+        a.calories = raw.get("calories")
+        a.achievement_count = raw.get("achievement_count", 0) or 0
+        a.save(update_fields=["calories", "achievement_count"])
+        a.refresh_from_db()
+        assert a.calories is None
+        assert a.achievement_count == 0

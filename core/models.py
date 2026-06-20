@@ -110,6 +110,8 @@ class Activity(models.Model):
     max_heartrate        = models.FloatField(null=True, blank=True)
     average_cadence      = models.FloatField(null=True, blank=True)
     kudos_count          = models.IntegerField(default=0)
+    calories             = models.FloatField(null=True, blank=True)
+    achievement_count    = models.IntegerField(default=0)
     trainer              = models.BooleanField(default=False)
     commute              = models.BooleanField(default=False)
     raw_data             = models.JSONField(default=dict)

@@ -55,6 +55,16 @@
       <div class="s-note">Enable HR sync in Huawei Health → Strava</div>
     {% endif %}
   </div>
+
+  <div class="stat-card">
+    <div class="s-label">Total Calories Burned</div>
+    {% if stats.total_calories %}
+      <div class="s-value">{{ stats.total_calories|floatformat:0 }}</div>
+      <div class="s-unit">kcal</div>
+    {% else %}
+      <div class="s-value">—</div>
+    {% endif %}
+  </div>
 </div>
 
 <!-- Distance over time chart -->

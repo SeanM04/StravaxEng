@@ -36,6 +36,8 @@ def _transform(item: dict) -> dict:
         "max_heartrate":        item.get("max_heartrate"),
         "average_cadence":      item.get("average_cadence"),
         "kudos_count":          item.get("kudos_count", 0),
+        "calories":             item.get("calories"),
+        "achievement_count":    item.get("achievement_count", 0),
         "trainer":              item.get("trainer", False),
         "commute":              item.get("commute", False),
         "raw_data":             item,
