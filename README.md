@@ -149,7 +149,7 @@ Follow the prompt: authorize the app in the browser, paste the redirect URL back
 ### 8. Sync activities
 
 ```bash
-# Incremental sync (only new activities since last run)
+# Incremental sync (activities from the last 7 days before the newest stored one)
 python manage.py sync_activities
 
 # Full sync (all pages)

@@ -2,6 +2,24 @@
 
 {% block content %}
 
+<!-- Sync trigger -->
+<div class="card sync-card">
+  <div>
+    <div class="card-title">Sync with Strava</div>
+    <span class="muted sync-note">
+      Pulls new activities, then best efforts and achievements. Also runs daily if the scheduled task is set up.
+    </span>
+  </div>
+  <form method="post" action="{% url 'sync_now' %}">
+    {% csrf_token %}
+    {% if sync_running %}
+      <button type="submit" class="btn" disabled>Sync running…</button>
+    {% else %}
+      <button type="submit" class="btn">Sync now</button>
+    {% endif %}
+  </form>
+</div>
+
 <!-- Top-line health stats -->
 <div class="stat-grid">
   <div class="stat-card">
@@ -29,21 +47,29 @@
     <div class="s-label">Last Successful Sync</div>
     {% if last_success %}
       <div class="s-value" style="font-size:1rem;">{{ last_success.finished_at|date:"M d, Y" }}</div>
-      <div class="s-unit">{{ last_success.finished_at|date:"H:i" }} UTC</div>
+      <div class="s-unit">{{ last_success.finished_at|date:"H:i T" }}</div>
     {% else %}
       <div class="s-value">—</div>
     {% endif %}
   </div>
   <div class="stat-card">
-    <div class="s-label">Token Status</div>
-    {% if token %}
-      {% if token.is_expired %}
-        <div class="s-value" style="font-size:1rem;color:#ef4444;">Expired</div>
-      {% else %}
-        <div class="s-value" style="font-size:1rem;color:#10b981;">Valid</div>
-      {% endif %}
+    <div class="s-label">Waiting for Next Sync</div>
+    <div class="s-value">{{ pending_best_efforts|add:pending_achievements }}</div>
+    <div class="s-note">
+      {{ pending_best_efforts }} best effort{{ pending_best_efforts|pluralize }} ·
+      {{ pending_achievements }} achievement fetch{{ pending_achievements|pluralize:"es" }}
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="s-label">Strava Connection</div>
+    {% if connection == "connected" %}
+      <div class="s-value s-value-sm s-good">Connected</div>
+    {% elif connection == "reconnect" %}
+      <div class="s-value s-value-sm s-bad">Re-connect needed</div>
+      <div class="s-note"><a href="{% url 'settings' %}">How to re-connect</a></div>
     {% else %}
-      <div class="s-value" style="font-size:1rem;color:#9ca3af;">No token</div>
+      <div class="s-value s-value-sm s-muted">Not connected</div>
+      <div class="s-note"><a href="{% url 'settings' %}">How to connect</a></div>
     {% endif %}
   </div>
 </div>
@@ -89,7 +115,7 @@
   </div>
   {% else %}
   <div class="empty-state">
-    No sync runs recorded yet. Run <code>python manage.py sync_activities</code> to start.
+    No sync runs recorded yet. Click <strong>Sync now</strong> above, or run <code>python manage.py sync</code>.
   </div>
   {% endif %}
 </div>
@@ -100,15 +126,15 @@
   <div style="display:flex;flex-direction:column;gap:.6rem;">
     <div>
       <code style="background:#f3f4f6;padding:.3rem .6rem;border-radius:4px;font-size:.85rem;color:#374151;">
-        python manage.py sync_activities
+        python manage.py sync
       </code>
-      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Incremental sync from Strava API</span>
+      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Full pipeline: new activities, best efforts, achievements (same as Sync now)</span>
     </div>
     <div>
       <code style="background:#f3f4f6;padding:.3rem .6rem;border-radius:4px;font-size:.85rem;color:#374151;">
-        python manage.py sync_activities --full
+        python manage.py sync --full
       </code>
-      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Full re-sync (ignore last sync timestamp)</span>
+      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Same, but re-fetches every activity from Strava</span>
     </div>
     <div>
       <code style="background:#f3f4f6;padding:.3rem .6rem;border-radius:4px;font-size:.85rem;color:#374151;">
@@ -118,9 +144,9 @@
     </div>
     <div>
       <code style="background:#f3f4f6;padding:.3rem .6rem;border-radius:4px;font-size:.85rem;color:#374151;">
-        python manage.py bootstrap_token
+        python manage.py get_strava_token
       </code>
-      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Seed StravaToken table from .env</span>
+      <span style="margin-left:.75rem;font-size:.85rem;color:#6b7280;">Connect or re-connect your Strava account (see Settings)</span>
     </div>
   </div>
 </div>

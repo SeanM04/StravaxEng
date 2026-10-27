@@ -3,18 +3,50 @@ ETL pipeline: Extract activities from Strava → Transform → Load into Postgre
 
 Modes
 -----
-Incremental (default): fetches only activities recorded after the last
-  successful sync, keeping API usage low.
+Incremental (default): fetches activities that started up to
+  ``INCREMENTAL_OVERLAP`` before the newest stored one, so late uploads are
+  caught while keeping API usage low (usually one page).
 Full (--full flag):    ignores history and fetches everything from Strava.
-"""
-import time
 
-from django.core.management.base import BaseCommand
+Outcome (recorded in ``SyncLog``)
+---------------------------------
+success: activities synced and best efforts computed for every new activity.
+partial: activities synced, but some best efforts could not be computed; the
+  ``backfill_best_efforts`` stage of ``manage.py sync`` retries them.
+failed:  activities could not be fetched; the command exits with an error.
+"""
+import traceback
+from datetime import timedelta
+
+import requests
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from core import strava_client
-from core.best_effort import compute_and_save
+from core.best_effort import compute_and_save, qualifies_for_best_efforts
 from core.models import Activity, SyncLog
+from core.sync_lock import STALE_AFTER_S
+
+# How far before the newest stored activity an incremental sync looks, to catch
+# activities uploaded late (e.g. a watch that syncs to Strava days afterwards).
+INCREMENTAL_OVERLAP = timedelta(days=7)
+
+
+def _close_interrupted_runs() -> None:
+    """Mark runs stuck in ``running`` for longer than a sync can take as failed.
+
+    A run stays ``running`` when its process is killed (PC shut down, window
+    closed) before it can record an outcome.
+    """
+    SyncLog.objects.filter(
+        status=SyncLog.Status.RUNNING,
+        started_at__lt=timezone.now() - timedelta(seconds=STALE_AFTER_S),
+    ).update(
+        status=SyncLog.Status.FAILED,
+        finished_at=timezone.now(),
+        error_message="Interrupted: the sync process stopped before finishing.",
+    )
 
 
 def _transform(item: dict) -> dict:
@@ -29,7 +61,9 @@ def _transform(item: dict) -> dict:
     return {
         "name":                 item.get("name", ""),
         "sport_type":           item.get("sport_type", "Other"),
-        "start_date":           item.get("start_date"),
+        # Parsed here so freshly-created instances hold a datetime, not the raw
+        # ISO string (compute_and_save calls start_date.date() before any reload).
+        "start_date":           parse_datetime(item["start_date"]),
         "distance_meters":      item.get("distance", 0),
         "moving_time_seconds":  item.get("moving_time", 0),
         "elapsed_time_seconds": item.get("elapsed_time", 0),
@@ -79,37 +113,40 @@ class Command(BaseCommand):
     def _get_cutoff_timestamp(self, full: bool) -> int | None:
         """Determine the Unix timestamp cutoff for an incremental sync.
 
-        In full mode, always returns ``None`` (no cutoff).  In incremental
-        mode, returns the ``finished_at`` timestamp of the last successful
-        sync, or ``None`` if no successful sync has been recorded yet (which
-        causes the caller to fall back to a full sync automatically).
+        Strava's ``?after=`` filters on when an activity *started*, so the
+        cutoff is the start of the newest stored activity minus
+        ``INCREMENTAL_OVERLAP``.  Using the last sync's finish time instead
+        would skip any activity uploaded after a sync but started before it
+        (a watch that syncs late).  The overlap re-fetches recent activities,
+        which is harmless because rows are upserted.
 
         Args:
-            full: If ``True``, skip the history lookup and return ``None``.
+            full: If ``True``, return ``None`` (no cutoff).
 
         Returns:
             int | None: Unix timestamp to pass as ``?after=`` to the Strava
-            API, or ``None`` to fetch all pages.
+            API, or ``None`` to fetch all pages (full mode, or nothing stored yet).
         """
         if full:
             self.stdout.write("Full sync requested.")
             return None
-        last_ok = (
-            SyncLog.objects
-            .filter(status=SyncLog.Status.SUCCESS)
-            .order_by("-finished_at")
-            .first()
+        newest = (
+            Activity.objects.order_by("-start_date").values_list("start_date", flat=True).first()
         )
-        if last_ok and last_ok.finished_at:
-            self.stdout.write(
-                f"Incremental sync — fetching activities after "
-                f"{last_ok.finished_at:%Y-%m-%d %H:%M:%S UTC}"
-            )
-            return int(last_ok.finished_at.timestamp())
-        self.stdout.write("No previous sync found — performing full sync.")
-        return None
+        if newest is None:
+            self.stdout.write("No activities stored yet — performing full sync.")
+            return None
+        cutoff = newest - INCREMENTAL_OVERLAP
+        self.stdout.write(
+            "Incremental sync — fetching activities started after "
+            f"{timezone.localtime(cutoff):%Y-%m-%d %H:%M %Z} "
+            f"({INCREMENTAL_OVERLAP.days} days before the newest stored activity)"
+        )
+        return int(cutoff.timestamp())
 
-    def _run_etl(self, after_ts: int | None, per_page: int) -> tuple[int, int, int]:
+    def _run_etl(
+        self, after_ts: int | None, per_page: int
+    ) -> tuple[int, int, int, list[Activity]]:
         """Paginate through Strava activities and upsert each one.
 
         Args:
@@ -118,7 +155,7 @@ class Command(BaseCommand):
             per_page: Number of activities to request per API page (max 200).
 
         Returns:
-            tuple[int, int, int]: ``(created, updated, pages_fetched)`` counts.
+            tuple: ``(created, updated, pages_fetched, new_activities)``.
 
         Raises:
             Exception: Any exception from ``strava_client`` propagates to the
@@ -149,34 +186,39 @@ class Command(BaseCommand):
             page += 1
         return created, updated, page, new_activities
 
-    def _compute_best_efforts(self, activities: list) -> None:
+    def _compute_best_efforts(self, activities: list) -> list[str]:
         """Fetch GPS streams and compute best efforts for newly-synced activities.
 
-        Rate-aware: sleeps 1 second between stream API calls and pauses 15
-        minutes after every 80 calls to respect Strava's rate limit.
-        Activities shorter than 1 km are silently skipped.
+        Only GPS runs of at least 1 km are processed (rate limiting happens in
+        ``core.strava_client``).  Activities whose streams cannot be fetched
+        stay unchecked, so ``backfill_best_efforts`` retries them.
 
         Args:
             activities: List of ``Activity`` instances created during this sync.
+
+        Returns:
+            list[str]: One message per activity whose streams could not be fetched.
         """
-        from core.best_effort import TARGET_DISTANCES_M as _TARGETS
-        eligible = [a for a in activities if a.distance_meters >= min(_TARGETS)]
+        eligible = [a for a in activities if qualifies_for_best_efforts(a)]
+        problems: list[str] = []
         if not eligible:
-            return
+            return problems
         n = len(eligible)
         self.stdout.write(
             f"  Computing best efforts for {n} new activit{'y' if n == 1 else 'ies'}…"
         )
-        for i, activity in enumerate(eligible, 1):
-            if i > 1 and (i - 1) % 80 == 0:
-                self.stdout.write("    Rate-limit pause — waiting 15 min…")
-                time.sleep(900)
-            c, u = compute_and_save(activity)
-            if c + u > 0:
-                self.stdout.write(
-                    f"    {activity.name[:40]}: {c} new, {u} updated best efforts"
-                )
-            time.sleep(1)
+        for activity in eligible:
+            try:
+                c, u = compute_and_save(activity)
+            except requests.RequestException as exc:
+                problems.append(f"best efforts for activity {activity.strava_id}: {exc}")
+                self.stderr.write(f"    Failed {activity.strava_id}: {exc}")
+            else:
+                if c + u > 0:
+                    self.stdout.write(
+                        f"    {activity.name[:40]}: {c} new, {u} updated best efforts"
+                    )
+        return problems
 
     def handle(self, *_args, **options):
         """Execute the ETL pipeline and write results to the SyncLog.
@@ -185,21 +227,37 @@ class Command(BaseCommand):
             *_args: Unused positional arguments (required by Django's interface).
             **options: Parsed CLI options.  Keys used: ``full`` (bool),
                 ``per_page`` (int).
+
+        Raises:
+            CommandError: If activities could not be fetched.  The failure is
+                recorded in the ``SyncLog`` first.
         """
+        _close_interrupted_runs()
         full     = options["full"]
         per_page = min(options["per_page"], 200)
         after_ts = self._get_cutoff_timestamp(full)
         log      = SyncLog.objects.create(incremental=not full)
 
-        new_activities: list = []
         created = updated = pages = 0
         try:
             created, updated, pages, new_activities = self._run_etl(after_ts, per_page)
-            log.status = SyncLog.Status.SUCCESS
-        except Exception as exc:  # noqa: BLE001 — all errors must be recorded in SyncLog
+        # All errors must be recorded in SyncLog.
+        except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             log.status = SyncLog.Status.FAILED
             log.error_message = str(exc)
-            self.stderr.write(self.style.ERROR(f"Sync failed: {exc}"))
+        else:
+            # Activities are saved by now, so a best-effort problem only makes the run partial.
+            try:
+                problems = self._compute_best_efforts(new_activities)
+            # Unexpected errors too: record them rather than lose them.
+            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                self.stderr.write(traceback.format_exc())
+                problems = [f"best efforts stopped: {exc}"]
+            log.status = SyncLog.Status.PARTIAL if problems else SyncLog.Status.SUCCESS
+            if problems:
+                log.error_message = (
+                    f"{len(problems)} problem(s), retried next sync. First: {problems[0]}"
+                )
         finally:
             log.finished_at        = timezone.now()
             log.activities_created = created
@@ -207,8 +265,11 @@ class Command(BaseCommand):
             log.pages_fetched      = pages
             log.save()
 
-        if log.status == SyncLog.Status.SUCCESS:
-            self._compute_best_efforts(new_activities)
-            self.stdout.write(self.style.SUCCESS(
-                f"Done: {created} created, {updated} updated across {pages} page(s)."
-            ))
+        summary = f"{created} created, {updated} updated across {pages} page(s)."
+        if log.status == SyncLog.Status.FAILED:
+            raise CommandError(f"Sync failed: {log.error_message}")
+        if log.status == SyncLog.Status.PARTIAL:
+            self.stdout.write(self.style.WARNING(f"Done with problems: {summary}"))
+            self.stdout.write(self.style.WARNING(f"  {log.error_message}"))
+        else:
+            self.stdout.write(self.style.SUCCESS(f"Done: {summary}"))

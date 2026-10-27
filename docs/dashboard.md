@@ -85,9 +85,11 @@ Template: `core/templates/core/coach.html`
 
 Rule-based insights computed from DB data:
 - Average weekly running volume (km)
-- Pace trend — compares average pace of last 10 runs vs previous 10
+- Pace trend — compares average pace (shown as M:SS /km) of the last 10 runs vs the previous
+  10. Changes under 2 % (`PACE_TREND_THRESHOLD`, ≈ 7 s/km at 6:00/km) are reported as
+  **steady** rather than improving/declining, since they are day-to-day noise
 - Long-run habit analysis (runs ≥ 15 km)
-- Heart rate data note (HUAWEI Watch GT 5 HR sync status)
+- Heart rate card — Huawei Health sync instructions while no run has heart rate data
 - Table of the 5 most recent runs
 
 ### Pipeline Health — `/pipeline/`
@@ -95,7 +97,8 @@ Rule-based insights computed from DB data:
 View: `pipeline_health`  
 Template: `core/templates/core/pipeline.html`
 
-- Health stat cards: total activities, total runs, total syncs, success rate %, last successful sync timestamp, token status
+- **Sync now** button (runs `manage.py sync` in the background)
+- Health stat cards: total activities, total runs, total syncs, success rate %, last successful sync timestamp, items waiting for the next sync, Strava connection
 - Table of the 20 most recent `SyncLog` entries with status, type (incremental/full), created/updated counts, and error messages
 - Quick-reference command list
 
@@ -104,8 +107,23 @@ Template: `core/templates/core/pipeline.html`
 View: `settings_view`  
 Template: `core/templates/core/settings_page.html`
 
-- Strava token status (valid / expired / missing) with masked token values
-- App configuration reference (athlete, watch, stack)
+- Strava connection: **Connected**, **Re-connection needed** or **Not connected**, with
+  step-by-step `manage.py get_strava_token` instructions when action is needed. An expired
+  *access* token is not shown as a problem — it lasts 6 hours and renews automatically on the
+  next sync; re-connecting is only asked for when the latest sync failed because the refresh
+  token was revoked (and no new token has been saved since). Token values are never shown.
+- App configuration reference (athlete, watch, time zone, stack)
+
+## Local time
+
+All pages show dates and times in `TIME_ZONE` (set in `.env`, e.g. `Africa/Johannesburg`;
+default UTC). Streaks, weekly charts and best-effort dates use the local calendar day, so a run
+at 01:30 local time counts for that day, not the previous UTC day. The database stores UTC.
+
+## Phones
+
+Below 768 px wide the sidebar becomes a sticky, horizontally scrolling navigation bar across
+the top and the page body uses the full width; wide tables scroll sideways.
 
 ## URL routes
 

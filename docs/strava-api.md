@@ -108,6 +108,28 @@ return token.access_token
 
 ## Rate limits
 
-Strava enforces **100 requests / 15 minutes** and **1 000 requests / day**.
-Each `sync_activities` page costs 1 API call (token refresh is free if the access token
-is still valid). Syncing 10 pages costs 10 requests.
+Strava enforces a **read** limit of **100 requests / 15 minutes** and **1 000 requests / day**
+(every call this app makes is a read), within an overall limit of 200 / 2 000. The 15-minute
+windows reset at :00, :15, :30 and :45; the daily count resets at midnight UTC. Each response
+reports usage in headers, as `<15-min>,<daily>`:
+
+```text
+X-ReadRateLimit-Limit: 100,1000      X-RateLimit-Limit: 200,2000
+X-ReadRateLimit-Usage: 1,4           X-RateLimit-Usage: 1,4
+```
+
+Each `sync_activities` page costs 1 request, and each best-effort or achievement fetch costs
+1 request per activity (token refresh is free if the access token is still valid).
+
+### How the client stays under them
+
+All requests go through `strava_client.strava_get`, whose `RateLimiter` reads those headers
+after every response (commands contain no rate-limit logic):
+
+- **15-minute window nearly used** (within 3 requests of the limit): the *next* request waits
+  until the window resets. A run never ends with a pointless pause.
+- **`429 Too Many Requests`**: waits for the next window and retries, up to 3 attempts.
+- **Daily allowance nearly used**: further requests raise `StravaRateLimitError` without
+  calling Strava. Loops stop at once (as for a revoked token, `StravaAuthError`; both subclass
+  `StravaUnavailableError`), the run is recorded as partial or failed, and the next sync after
+  midnight UTC picks up the unprocessed activities.

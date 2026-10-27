@@ -65,8 +65,7 @@ Every run of `sync_activities` writes a `SyncLog` row that records start/end tim
 status (`running` / `success` / `partial` / `failed`), counts of created/updated rows,
 pages fetched, and any error message. The Pipeline Health page reads this table.
 
-The last `success` log's `finished_at` timestamp is used as the `?after=` cutoff for
-the next incremental sync, keeping API usage minimal.
+The incremental sync's `?after=` cutoff is the start time of the newest stored activity minus 7 days (`INCREMENTAL_OVERLAP`). Strava's `?after=` filters on when an activity *started*, so this catches activities uploaded late (e.g. a watch that syncs days afterwards); the re-fetched activities are simply upserted, usually costing one page request.
 
 ### Template inheritance
 

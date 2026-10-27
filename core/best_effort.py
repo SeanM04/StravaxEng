@@ -27,6 +27,15 @@ shrinks the available right-side coverage), so we break early.
 
 Complexity: O(n) time, O(1) extra space.
 """
+from django.utils import timezone
+
+from core import strava_client
+from core.models import Activity, BestEffort
+
+# Best efforts are computed only for GPS runs.  Walks and rides would otherwise
+# win every "fastest 5K"; treadmill/virtual runs take their distance from the
+# treadmill or a foot pod rather than GPS, so their bests are unreliable.
+RUN_SPORT_TYPES: tuple[str, ...] = ("Run", "TrailRun")
 
 TARGET_DISTANCES_M: list[int] = [
     1_000,
@@ -107,32 +116,71 @@ def find_best_effort(
     return best
 
 
+def qualifies_for_best_efforts(activity) -> bool:
+    """Return True if *activity* is a GPS run long enough for the shortest target.
+
+    Mirrors the filter in ``activities_for_best_efforts``.
+
+    Args:
+        activity: An ``Activity`` instance.
+
+    Returns:
+        Whether best efforts should be computed for it.
+    """
+    return (
+        activity.sport_type in RUN_SPORT_TYPES
+        and not activity.trainer
+        and activity.distance_meters >= min(TARGET_DISTANCES_M)
+    )
+
+
+def activities_for_best_efforts(include_checked: bool = False):
+    """Return GPS runs long enough to hold a best effort, newest first.
+
+    Args:
+        include_checked: If ``False`` (the default), only activities whose
+            streams have not been processed yet, i.e. new ones and ones whose
+            last fetch failed.
+
+    Returns:
+        QuerySet[Activity]: The matching activities.
+    """
+    qs = Activity.objects.filter(
+        sport_type__in=RUN_SPORT_TYPES,
+        trainer=False,
+        distance_meters__gte=min(TARGET_DISTANCES_M),
+    )
+    if not include_checked:
+        qs = qs.filter(best_efforts_checked_at__isnull=True)
+    return qs.order_by("-start_date")
+
+
 def compute_and_save(activity) -> tuple[int, int]:
     """Fetch GPS streams for *activity* and upsert BestEffort rows.
 
     Calls the Strava stream endpoint, runs ``find_best_effort`` for each
-    target distance the activity is long enough to cover, and persists
-    results via ``BestEffort.objects.update_or_create``.
-
-    Uses late imports to avoid circular-import issues at module load time.
+    target distance the activity is long enough to cover, persists results
+    via ``BestEffort.objects.update_or_create``, and stamps
+    ``activity.best_efforts_checked_at`` so it is not fetched again.  An
+    activity with no GPS data is still stamped: there is nothing to retry.
 
     Args:
         activity: A saved ``Activity`` model instance.
 
     Returns:
-        ``(created, updated)`` counts.  Returns ``(0, 0)`` when the activity
-        is shorter than all targets or the stream fetch fails.
+        ``(created, updated)`` counts.  ``(0, 0)`` when the activity is not a
+        GPS run or is shorter than every target (no API call is made, nothing
+        is stamped).
+
+    Raises:
+        requests.RequestException: If the stream request fails.  The activity
+            is left unstamped so the next sync retries it.
+        StravaAuthError: If no valid Strava token is available.
     """
-    from core import strava_client
-    from core.models import BestEffort
-
-    if activity.distance_meters < min(TARGET_DISTANCES_M):
+    if not qualifies_for_best_efforts(activity):
         return 0, 0
 
-    try:
-        streams = strava_client.fetch_activity_streams(activity.strava_id)
-    except Exception:  # noqa: BLE001 — caller decides whether to log / retry
-        return 0, 0
+    streams = strava_client.fetch_activity_streams(activity.strava_id)
 
     dist = streams["distance"]
     ts   = streams["time"]
@@ -153,7 +201,7 @@ def compute_and_save(activity) -> tuple[int, int]:
             target_distance_m=target_m,
             defaults={
                 "elapsed_time_s": best_s,
-                "achieved_at":    activity.start_date.date(),
+                "achieved_at":    timezone.localdate(activity.start_date),
                 "pace_per_km":    pace,
             },
         )
@@ -162,4 +210,6 @@ def compute_and_save(activity) -> tuple[int, int]:
         else:
             updated += 1
 
+    activity.best_efforts_checked_at = timezone.now()
+    activity.save(update_fields=["best_efforts_checked_at"])
     return created, updated

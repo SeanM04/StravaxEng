@@ -2,15 +2,30 @@
 import json
 from datetime import date, timedelta
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncWeek
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 
-from .best_effort import DISTANCE_LABELS, TARGET_DISTANCES_M
+from .achievements import activities_for_achievements
+from .best_effort import (
+    DISTANCE_LABELS,
+    RUN_SPORT_TYPES,
+    TARGET_DISTANCES_M,
+    activities_for_best_efforts,
+)
 from .models import Activity, BestEffort, SyncLog, StravaToken
+from .strava_client import REAUTH_COMMAND
+from .sync_lock import start_background_sync, sync_in_progress
+
+# Pace changes smaller than this (2 % ≈ 7 s/km at 6:00/km) are day-to-day
+# noise, so the coach page reports them as "steady".
+PACE_TREND_THRESHOLD = 0.02
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
@@ -51,7 +66,7 @@ def _daily_streaks(date_set, today):
     Args:
         date_set (set[datetime.date]): Distinct dates on which at least one
             activity was logged.
-        today (datetime.date): The reference date, normally ``date.today()``.
+        today (datetime.date): The reference date, normally ``timezone.localdate()``.
 
     Returns:
         tuple[int, int]: ``(current_streak, longest_streak)`` where each
@@ -89,7 +104,7 @@ def _weekly_streaks(date_set, today):
 
     Args:
         date_set (set[datetime.date]): Distinct activity dates.
-        today (datetime.date): The reference date, normally ``date.today()``.
+        today (datetime.date): The reference date, normally ``timezone.localdate()``.
 
     Returns:
         tuple[int, int]: ``(current_weekly_streak, longest_weekly_streak)``.
@@ -154,6 +169,91 @@ def _personal_records(runs, all_acts):
     return longest_run, fastest_run, highest_elevation, most_kudos
 
 
+def _distance_bests():
+    """Return the fastest run best effort for each target distance.
+
+    Returns:
+        list[dict]: One dict per target distance with keys ``label``,
+        ``target_m`` and ``best`` (a ``BestEffort`` or ``None``).
+    """
+    return [
+        {
+            "label":    DISTANCE_LABELS[t],
+            "target_m": t,
+            "best": (
+                BestEffort.objects
+                .filter(target_distance_m=t, activity__sport_type__in=RUN_SPORT_TYPES)
+                .select_related("activity")
+                .order_by("elapsed_time_s")
+                .first()
+            ),
+        }
+        for t in TARGET_DISTANCES_M
+    ]
+
+
+def _pace_trend(latest, previous):
+    """Classify the change between two average paces.
+
+    Args:
+        latest (float | None): Average pace of the recent runs, min/km.
+        previous (float | None): Average pace of the runs before those, min/km.
+
+    Returns:
+        str | None: ``"improving"`` (faster), ``"declining"`` (slower),
+        ``"steady"`` (within ``PACE_TREND_THRESHOLD``), or ``None`` if either
+        pace is missing.
+    """
+    if not latest or not previous:
+        return None
+    change = (latest - previous) / previous
+    if abs(change) < PACE_TREND_THRESHOLD:
+        return "steady"
+    return "improving" if change < 0 else "declining"
+
+
+def _format_pace(min_per_km):
+    """Format a decimal min/km pace as ``M:SS``.
+
+    Args:
+        min_per_km (float | None): Pace in decimal minutes per km.
+
+    Returns:
+        str | None: e.g. ``"5:50"`` for 5.83, or ``None``.
+    """
+    if not min_per_km:
+        return None
+    minutes, seconds = divmod(round(min_per_km * 60), 60)
+    return f"{minutes}:{seconds:02d}"
+
+
+def _strava_connection(token):
+    """Say whether the app can reach Strava, for the Settings and Pipeline pages.
+
+    An expired *access* token is normal: it lasts 6 hours and is renewed
+    automatically on the next sync.  Re-connecting is only needed when the
+    latest sync failed because the refresh token was revoked, and the token
+    has not been replaced since.
+
+    Args:
+        token (StravaToken | None): The stored token.
+
+    Returns:
+        str: ``"missing"``, ``"reconnect"`` or ``"connected"``.
+    """
+    if token is None:
+        return "missing"
+    last = SyncLog.objects.order_by("-started_at").first()
+    if (
+        last is not None
+        and last.status == SyncLog.Status.FAILED
+        and REAUTH_COMMAND in last.error_message
+        and token.updated_at < last.started_at
+    ):
+        return "reconnect"
+    return "connected"
+
+
 def _avg_pace_min_per_km(batch):
     """Calculate the mean pace across a batch of activities in min/km.
 
@@ -202,7 +302,9 @@ def dashboard(request):
         Activity.objects.filter(sport_type="Run", distance_meters__gt=0)
         .order_by("start_date").values("start_date", "distance_meters")
     )
-    chart_labels = json.dumps([a["start_date"].strftime("%b %d") for a in chart_qs])
+    chart_labels = json.dumps(
+        [timezone.localtime(a["start_date"]).strftime("%b %d") for a in chart_qs]
+    )
     chart_data   = json.dumps([round(a["distance_meters"] / 1000, 2) for a in chart_qs])
 
     return render(request, "core/dashboard.html", {
@@ -282,7 +384,9 @@ def analytics(request):
         "week_labels":  json.dumps([w["week"].strftime("%b %d") for w in weekly_qs]),
         "week_km":      json.dumps([round(w["total_m"] / 1000, 1) for w in weekly_qs]),
         "week_counts":  json.dumps([w["count"] for w in weekly_qs]),
-        "pace_labels":  json.dumps([r["start_date"].strftime("%b %d") for r in run_qs]),
+        "pace_labels":  json.dumps(
+            [timezone.localtime(r["start_date"]).strftime("%b %d") for r in run_qs]
+        ),
         "pace_data":    json.dumps([
             round(r["moving_time_seconds"] / (r["distance_meters"] / 1000) / 60, 2)
             for r in run_qs
@@ -307,7 +411,7 @@ def records(request):
     """
     runs     = Activity.objects.filter(sport_type="Run")
     all_acts = Activity.objects.all()
-    today    = date.today()
+    today    = timezone.localdate()
 
     longest_run, fastest_run, highest_elevation, most_kudos = _personal_records(runs, all_acts)
 
@@ -320,21 +424,7 @@ def records(request):
         .annotate(count=Count("id"), total_km=Sum("distance_meters")).order_by("-count")
     )
 
-    personal_bests = [
-        {
-            "label":    DISTANCE_LABELS[t],
-            "target_m": t,
-            "best": (
-                BestEffort.objects
-                .filter(target_distance_m=t)
-                .select_related("activity")
-                .order_by("elapsed_time_s")
-                .first()
-            ),
-        }
-        for t in TARGET_DISTANCES_M
-    ]
-    personal_bests_exist = any(pb["best"] is not None for pb in personal_bests)
+    personal_bests = _distance_bests()
 
     return render(request, "core/records.html", {
         "active_page": "records", "page_title": "Records & Streaks",
@@ -345,7 +435,7 @@ def records(request):
         "longest_weekly_streak": longest_weekly_streak,
         "sport_breakdown": sport_breakdown,
         "personal_bests": personal_bests,
-        "personal_bests_exist": personal_bests_exist,
+        "personal_bests_exist": any(pb["best"] is not None for pb in personal_bests),
     })
 
 
@@ -354,8 +444,9 @@ def coach(request):
     """Render the AI Coach Notes page with training insights.
 
     Compares the average pace of the 10 most recent runs against the prior
-    10 to determine whether pace is improving or declining.  Requires at
-    least 20 eligible runs before a trend can be reported.
+    10 to report whether pace is improving, declining or steady (see
+    ``_pace_trend``).  Requires at least 20 eligible runs before a trend can
+    be reported.
 
     Args:
         request: Django ``HttpRequest``.
@@ -374,18 +465,17 @@ def coach(request):
     recent_runs    = list(runs.filter(moving_time_seconds__gt=0).order_by("-start_date")[:20])
     latest_10_pace = _avg_pace_min_per_km(recent_runs[:10])
     prev_10_pace   = _avg_pace_min_per_km(recent_runs[10:20])
-    pace_trend     = None
-    if latest_10_pace and prev_10_pace:
-        pace_trend = "improving" if latest_10_pace < prev_10_pace else "declining"
 
     return render(request, "core/coach.html", {
         "active_page": "coach", "page_title": "AI Coach Notes",
         "avg_weekly_km":  avg_weekly_km,
-        "pace_trend":     pace_trend,
-        "latest_pace":    round(latest_10_pace, 2) if latest_10_pace else None,
+        "pace_trend":     _pace_trend(latest_10_pace, prev_10_pace),
+        "latest_pace":    _format_pace(latest_10_pace),
+        "previous_pace":  _format_pace(prev_10_pace),
         "long_run_count": runs.filter(distance_meters__gte=15000).count(),
         "total_runs":     runs.count(),
         "recent_runs":    recent_runs[:5],
+        "has_heart_rate": runs.exclude(average_heartrate=None).exists(),
     })
 
 
@@ -403,6 +493,7 @@ def pipeline_health(request):
     """
     total_syncs   = SyncLog.objects.count()
     success_syncs = SyncLog.objects.filter(status=SyncLog.Status.SUCCESS).count()
+    token         = StravaToken.objects.first()
 
     return render(request, "core/pipeline.html", {
         "active_page": "pipeline", "page_title": "Pipeline Health",
@@ -414,27 +505,50 @@ def pipeline_health(request):
         "total_runs":       Activity.objects.filter(sport_type="Run").count(),
         "total_syncs":      total_syncs,
         "success_rate":     round(success_syncs / total_syncs * 100) if total_syncs else None,
-        "token":            StravaToken.objects.first(),
+        "connection":       _strava_connection(token),
+        "sync_running":     sync_in_progress(),
+        "pending_best_efforts": activities_for_best_efforts().count(),
+        "pending_achievements": activities_for_achievements().count(),
     })
 
 
 @login_required
+@require_POST
+def sync_now(request):
+    """Start ``manage.py sync`` in the background from the Pipeline page.
+
+    Args:
+        request: Django ``HttpRequest``.
+
+    Returns:
+        HttpResponseRedirect: Back to the Pipeline page, with a flash message.
+    """
+    if sync_in_progress():
+        messages.info(request, "A sync is already running. Check back in a few minutes.")
+    else:
+        start_background_sync()
+        messages.success(request, "Sync started. Refresh this page in a minute to see the results.")
+    return redirect("pipeline")
+
+
+@login_required
 def settings_view(request):
-    """Render the Settings page showing Strava token status.
+    """Render the Settings page showing the Strava connection.
 
     Args:
         request: Django ``HttpRequest``.
 
     Returns:
         HttpResponse: Rendered ``core/settings_page.html`` with the current
-        ``StravaToken`` instance (or ``None``) and a boolean indicating
-        whether the token is expired.
+        ``StravaToken`` (or ``None``), the connection status from
+        ``_strava_connection`` and the command that re-connects.
     """
     token = StravaToken.objects.first()
     return render(request, "core/settings_page.html", {
         "active_page": "settings", "page_title": "Settings",
-        "token": token, "has_token": token is not None,
-        "token_expired": token.is_expired if token else True,
+        "token": token,
+        "connection": _strava_connection(token),
+        "reauth_command": REAUTH_COMMAND,
     })
 
 
@@ -467,9 +581,6 @@ def health(_request):
     query.  This view intentionally requires no login so that load balancers
     and external uptime monitors can reach it without credentials.
 
-    Args:
-        request: Django ``HttpRequest``.
-
     Returns:
         JsonResponse: ``{"status": "ok", "database": "connected"}`` with
         HTTP 200 on success, or ``{"status": "error", "database":
@@ -478,5 +589,6 @@ def health(_request):
     try:
         Activity.objects.exists()
         return JsonResponse({"status": "ok", "database": "connected"})
-    except Exception:  # noqa: BLE001 — any DB error should return 503
+    # Any DB error should return 503.
+    except Exception:  # noqa: BLE001  # pylint: disable=broad-exception-caught
         return JsonResponse({"status": "error", "database": "unreachable"}, status=503)

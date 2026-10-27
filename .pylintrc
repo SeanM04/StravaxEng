@@ -1,0 +1,33 @@
+[MAIN]
+load-plugins=
+    pylint_django,
+    pylint.extensions.docparams,
+    pylint.extensions.docstyle,
+django-settings-module=StravaxEng.settings
+ignore=migrations,.venv
+jobs=1
+
+[MESSAGES CONTROL]
+disable=
+    # Types live in signature annotations, not in docstrings.
+    missing-type-doc,
+    missing-return-type-doc,
+    missing-yield-type-doc,
+    # Module docstrings in this repo open with a newline after the quotes.
+    docstring-first-line-empty,
+
+[BASIC]
+# Private helpers, Django's inner Meta class, test classes, test methods and
+# unittest fixtures don't need docstrings.
+no-docstring-rgx=^_|^Meta$|.*Tests$|^test_|^setUp$|^tearDown$
+
+[PARAMETER_DOCUMENTATION]
+# Google-style docstrings: Args / Returns / Raises / Yields sections.
+default-docstring-type=google
+accept-no-param-doc=no
+accept-no-raise-doc=no
+accept-no-return-doc=no
+accept-no-yields-doc=no
+
+[FORMAT]
+max-line-length=100

@@ -12,6 +12,7 @@ A Django + PostgreSQL ETL and visualization app for Strava activity data.
 | [models.md](models.md) | All three database models and their field reference |
 | [dashboard.md](dashboard.md) | Multi-page UI — all 7 pages, layouts, charts, and streaks |
 | [management-commands.md](management-commands.md) | All `manage.py` commands and their arguments |
+| [best-effort.md](best-effort.md) | Sliding-window best-effort detection algorithm — design, complexity, and worked example |
 
 ## Quick start
 

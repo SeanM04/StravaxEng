@@ -22,11 +22,17 @@
     <div class="ic-header">Pace Trend</div>
     <p>
       {% if pace_trend == "improving" %}
-        Your pace over the last 10 runs ({{ latest_pace }} min/km avg) is <strong>faster</strong> than the previous 10.
+        Your last 10 runs averaged <strong>{{ latest_pace }} /km</strong>, <strong>faster</strong> than
+        {{ previous_pace }} /km over the 10 before.
         Great progress — keep the workload manageable to avoid overreaching.
       {% elif pace_trend == "declining" %}
-        Your pace over the last 10 runs ({{ latest_pace }} min/km avg) has <strong>slowed</strong> compared to the previous 10.
+        Your last 10 runs averaged <strong>{{ latest_pace }} /km</strong>, <strong>slower</strong> than
+        {{ previous_pace }} /km over the 10 before.
         This could indicate fatigue, higher volume, or terrain changes — a rest week may help.
+      {% elif pace_trend == "steady" %}
+        Your last 10 runs averaged <strong>{{ latest_pace }} /km</strong>, about the same as
+        {{ previous_pace }} /km over the 10 before (within 2%, normal day-to-day variation).
+        To get faster, add one quality session a week, such as intervals or a tempo run.
       {% else %}
         Not enough run history yet to determine a pace trend. Keep logging!
       {% endif %}
@@ -51,10 +57,15 @@
   <div class="insight-card">
     <div class="ic-header">Heart Rate Data</div>
     <p>
-      Heart rate data is currently unavailable for your activities. Your HUAWEI WATCH GT 5 does
-      not sync HR to Strava via Huawei Health by default.
-      Enable it in <strong>Huawei Health → Connected Apps → Strava</strong> to unlock zone-based
-      training insights here.
+      {% if has_heart_rate %}
+        Heart rate data is coming through from Strava for your runs.
+        Zone-based training insights are not built yet.
+      {% else %}
+        None of your runs have heart rate data yet. Your HUAWEI WATCH GT 5 does
+        not sync HR to Strava via Huawei Health by default.
+        Enable it in <strong>Huawei Health → Connected Apps → Strava</strong>; this card
+        updates once runs with heart rate arrive.
+      {% endif %}
     </p>
   </div>
 

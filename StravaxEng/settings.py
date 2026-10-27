@@ -1,3 +1,4 @@
+"""Django settings for StravaXEng; secrets and per-machine values come from ``.env``."""
 import os
 from pathlib import Path
 
@@ -77,7 +78,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+# Your local time zone (IANA name). Dates, streaks and weekly charts are shown
+# and grouped in it; the database still stores UTC.
+TIME_ZONE = os.getenv("TIME_ZONE", "UTC")
 USE_I18N = True
 USE_TZ = True
 

@@ -34,7 +34,7 @@ python manage.py get_strava_token
 
 ### `get_strava_token` — notes
 
-- After this command succeeds, run `sync_activities` immediately.
+- After this command succeeds, run `sync` immediately.
 - Uses the `authorization_code` grant, which always works regardless of the state of any
   refresh token currently in `.env`.
 
@@ -62,6 +62,48 @@ python manage.py bootstrap_token
 
 ---
 
+## sync
+
+File: [`core/management/commands/sync.py`](../core/management/commands/sync.py)
+
+The everyday command. Runs the whole pipeline in order:
+
+1. `sync_activities` — new activities from Strava.
+2. `backfill_best_efforts` — best efforts for any activity still missing them.
+3. `fetch_achievements` — segment achievements for activities not yet fetched.
+
+If step 1 fails (e.g. the Strava token was revoked), steps 2–3 are skipped. If step 2 or 3
+has failures, the other still runs, the run's `SyncLog` is marked `partial` with the details,
+and the command exits with an error; the failed items are retried by the next sync. A lock file
+(`.sync.lock`) prevents two syncs from running at once; a lock older than 3 hours is treated
+as left over from a crashed run.
+
+The **Sync now** button on the Pipeline page runs this same command in the background and
+appends its output to `sync.log` in the project root.
+
+### `sync` — usage
+
+```bash
+python manage.py sync          # incremental
+python manage.py sync --full   # re-fetch every activity
+```
+
+### `sync` — daily schedule (Windows Task Scheduler)
+
+[`scripts/sync_daily.cmd`](../scripts/sync_daily.cmd) runs `manage.py sync` with the project's
+virtualenv and appends the output to `sync.log`. Register it once from PowerShell (adjust the
+path and time as needed):
+
+```powershell
+schtasks /Create /TN "StravaXEng daily sync" /TR "C:\Users\Mukar\OneDrive\Desktop\StravaXeng\scripts\sync_daily.cmd" /SC DAILY /ST 21:00 /F
+```
+
+- Runs while you are logged in; PostgreSQL must be running. A console window shows while it runs.
+- Run it on demand: `schtasks /Run /TN "StravaXEng daily sync"`
+- Remove it: `schtasks /Delete /TN "StravaXEng daily sync" /F`
+
+---
+
 ## sync_activities
 
 File: [`core/management/commands/sync_activities.py`](../core/management/commands/sync_activities.py)
@@ -72,10 +114,10 @@ table. Writes a `SyncLog` row for every run.
 ### `sync_activities` — usage
 
 ```bash
-# Incremental sync (default) — fetches only since the last successful sync
+# Incremental sync (default) — activities started up to 7 days before the newest stored one
 python manage.py sync_activities
 
-# Full re-sync — ignores last-sync timestamp, fetches everything
+# Full re-sync — fetches everything
 python manage.py sync_activities --full
 
 # Control page size (default 100, max 200)
@@ -86,24 +128,29 @@ python manage.py sync_activities --per-page 200
 
 | Argument | Type | Default | Description |
 | --- | --- | --- | --- |
-| `--full` | flag | off | Ignore last-sync timestamp and fetch all activities |
+| `--full` | flag | off | Fetch all activities instead of the last 7 days' worth |
 | `--per-page` | int | 100 | Activities per API page (capped at 200) |
 
 ### `sync_activities` — steps
 
-1. Determines the `after` timestamp — `finished_at` of the last `success` SyncLog, or
-   none if running in full mode or no previous success exists.
-2. Creates a `SyncLog` row with `status = running`.
-3. Pages through `GET /api/v3/athlete/activities?after=<ts>&per_page=<n>&page=<p>`.
-4. For each activity, calls `Activity.objects.update_or_create(strava_id=...)`.
-5. Updates the SyncLog to `success` (or `failed` on exception) with counts and duration.
+1. Marks any run left `running` for over 3 hours as `failed` (interrupted).
+2. Determines the `after` timestamp — the start time of the newest stored activity minus 7 days (`INCREMENTAL_OVERLAP`). Strava's `?after=` filters on when an activity *started*, so this catches activities uploaded late (e.g. a watch that syncs days afterwards); the re-fetched activities are simply upserted. None in full mode or when no
+   activities are stored yet.
+3. Creates a `SyncLog` row with `status = running`.
+4. Pages through `GET /api/v3/athlete/activities?after=<ts>&per_page=<n>&page=<p>`.
+5. For each activity, calls `Activity.objects.update_or_create(strava_id=...)`.
+6. For each newly-created activity, fetches its GPS stream and runs the sliding-window
+   best-effort algorithm via `best_effort.compute_and_save`.
+7. Updates the SyncLog with counts and an outcome: `success`; `partial` if some GPS streams
+   could not be fetched (those activities are retried by `backfill_best_efforts`); or `failed`
+   if activities could not be fetched, in which case the command exits with an error.
 
 ### `sync_activities` — example output
 
 ```text
-Incremental sync — fetching activities after 2026-06-15 08:00:00 UTC
-  Page 1: 12 activities processed
-Done: 10 created, 2 updated across 1 page(s).
+Incremental sync — fetching activities started after 2026-10-20 08:28 SAST (7 days before the newest stored activity)
+  Page 1: 8 activities processed
+Done: 1 created, 7 updated across 1 page(s).
 ```
 
 ---
@@ -148,3 +195,97 @@ The MCP format nests summary fields differently from the REST API response.
 
 - Safe to re-run — uses `update_or_create` on `strava_id`.
 - Activities without a valid `id` or `start_local` are skipped.
+
+---
+
+## fetch_achievements
+
+File: [`core/management/commands/fetch_achievements.py`](../core/management/commands/fetch_achievements.py)
+
+Fetches segment achievements for every activity that has `achievement_count > 0` and has not
+been fetched yet, and stores them as `Achievement` rows. Each call hits `GET /activities/{id}` (the detailed endpoint) to
+read `segment_efforts[].achievements[]`.
+
+### `fetch_achievements` — usage
+
+```bash
+# Process activities not fetched yet
+python manage.py fetch_achievements
+
+# Test with a small batch first
+python manage.py fetch_achievements --limit 20
+
+# Re-fetch every activity with achievement_count > 0
+python manage.py fetch_achievements --force
+```
+
+### `fetch_achievements` — arguments
+
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--limit` | int | none | Stop after processing this many activities |
+| `--force` | flag | off | Re-fetch activities that were already fetched |
+
+### `fetch_achievements` — rate limiting
+
+Handled by the Strava client from Strava's usage headers — see
+[Rate limits](strava-api.md#rate-limits).
+
+### `fetch_achievements` — notes
+
+- Safe to re-run — uses `update_or_create` on `(activity, segment_name, achievement_type)`.
+- Activities with `achievement_count = 0` are skipped without an API call.
+- Each fetched activity is stamped `achievements_checked_at`, even if it has no segment
+  achievements (Strava's count also includes best-effort PRs), so it is not fetched again.
+- Failed requests leave the activity unstamped for the next run and make the command exit
+  with an error. An invalid Strava token stops it immediately.
+- Achievements appear on the activity detail page at `/activities/<strava_id>/`.
+
+---
+
+## backfill_best_efforts
+
+File: [`core/management/commands/backfill_best_efforts.py`](../core/management/commands/backfill_best_efforts.py)
+
+Computes sliding-window personal best times for activities that have not been processed yet
+(new, or whose last fetch failed) and stores them as `BestEffort` rows. Fetches `GET /activities/{id}/streams?keys=distance,time` for each
+activity, then runs the two-pointer algorithm in `core/best_effort.py`.
+
+See [`best-effort.md`](best-effort.md) for the full algorithm documentation.
+
+### `backfill_best_efforts` — usage
+
+```bash
+# Process activities not processed yet
+python manage.py backfill_best_efforts
+
+# Test with a small batch first
+python manage.py backfill_best_efforts --limit 10
+
+# Recompute every eligible activity
+python manage.py backfill_best_efforts --force
+```
+
+### `backfill_best_efforts` — arguments
+
+| Argument | Type | Default | Description |
+| --- | --- | --- | --- |
+| `--limit` | int | none | Stop after processing this many activities |
+| `--force` | flag | off | Recompute activities that were already processed |
+
+### `backfill_best_efforts` — rate limiting
+
+Handled by the Strava client from Strava's usage headers — see
+[Rate limits](strava-api.md#rate-limits).
+
+### `backfill_best_efforts` — notes
+
+- Only GPS runs (`Run` / `TrailRun`, not on a treadmill) of at least 1 K are processed;
+  everything else is skipped without an API call. See [`best-effort.md`](best-effort.md).
+- Safe to re-run — uses `update_or_create` on `(activity, target_distance_m)`.
+- Each processed activity is stamped `best_efforts_checked_at`, even if it had no GPS data,
+  so it is not fetched again.
+- Failed requests leave the activity unstamped for the next run and make the command exit
+  with an error. An invalid Strava token stops it immediately.
+- `manage.py sync` runs this after `sync_activities`, so stream fetches that failed during
+  a sync are retried automatically.

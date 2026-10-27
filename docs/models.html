@@ -27,6 +27,8 @@
     <a href="models.html" class="active">Models</a>
     <a href="dashboard.html">UI &mdash; Pages</a>
     <a href="management-commands.html">Management Commands</a>
+    <div class="nav-section">Algorithms</div>
+    <a href="best-effort.html">Best-Effort Detection</a>
   </nav>
   <div class="sidebar-footer">StravaXEng &mdash; 2026</div>
 </aside>
@@ -42,7 +44,7 @@
 
   <div class="content">
     <h1>Models</h1>
-    <p class="page-lead">All three database models defined in <code>core/models.py</code>.</p>
+    <p class="page-lead">All five database models defined in <code>core/models.py</code>.</p>
 
     <h2>StravaToken</h2>
     <p>
@@ -133,6 +135,76 @@ activity.pace_per_km          # "M:SS" string — returns "—" if no distance
 activity.moving_time_display  # "1h 23m 45s" or "23m 45s"</code></pre>
     <p>Default ordering: <code>-start_date</code> (newest first).</p>
 
+    <hr class="section-divider">
+
+    <h2>Achievement</h2>
+    <p>
+      Stores a segment achievement earned during an activity. Populated by
+      <code>fetch_achievements</code>.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>activity</code></td><td>FK &rarr; Activity</td><td>Activity in which the achievement was earned</td></tr>
+          <tr><td><code>segment_name</code></td><td>CharField(255)</td><td>Name of the Strava segment</td></tr>
+          <tr><td><code>achievement_type</code></td><td>CharField(20)</td><td>One of: <code>pr</code>, <code>kom</code>, <code>cr</code>, <code>overall</code></td></tr>
+          <tr><td><code>rank</code></td><td>IntegerField</td><td>Finishing rank for this achievement</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The triple <code>(activity, segment_name, achievement_type)</code> is unique — safe to
+      re-run <code>fetch_achievements</code>. Default ordering: <code>achievement_type</code>,
+      then <code>segment_name</code>.
+    </p>
+    <h3>Achievement type labels</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Value</th><th>Display</th></tr></thead>
+        <tbody>
+          <tr><td><code>pr</code></td><td>Personal Record</td></tr>
+          <tr><td><code>kom</code></td><td>King of the Mountain</td></tr>
+          <tr><td><code>cr</code></td><td>Course Record</td></tr>
+          <tr><td><code>overall</code></td><td>Overall Leader</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <hr class="section-divider">
+
+    <h2>BestEffort</h2>
+    <p>
+      Stores the fastest time the athlete covered a standard distance bucket in a given
+      activity. Computed by the sliding-window algorithm in <code>core/best_effort.py</code>.
+      See <a href="best-effort.html">Best-Effort Algorithm</a> for the full documentation.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>activity</code></td><td>FK &rarr; Activity</td><td>Activity in which the best was achieved</td></tr>
+          <tr><td><code>target_distance_m</code></td><td>IntegerField</td><td>Target in metres (e.g. <code>5000</code>)</td></tr>
+          <tr><td><code>elapsed_time_s</code></td><td>FloatField</td><td>Fastest elapsed time in seconds</td></tr>
+          <tr><td><code>achieved_at</code></td><td>DateField</td><td>Calendar date of the activity</td></tr>
+          <tr><td><code>pace_per_km</code></td><td>FloatField</td><td>Decimal minutes per kilometre</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The pair <code>(activity, target_distance_m)</code> is unique — safe to re-run
+      the computation. Default ordering: <code>target_distance_m</code> ascending.
+    </p>
+    <h3>Computed properties</h3>
+    <pre><code>effort.time_display   # &rarr; "21:34" or "1:05:12"
+effort.pace_display   # &rarr; "4:19"  (M:SS per km)</code></pre>
+
+    <hr class="section-divider">
+
     <h2>Migrations</h2>
     <div class="table-wrap">
       <table>
@@ -143,6 +215,11 @@ activity.moving_time_display  # "1h 23m 45s" or "23m 45s"</code></pre>
           <tr><td><code>0001_initial</code></td><td>Creates the <code>Activity</code> table</td></tr>
           <tr><td><code>0002_stravatoken_synclog</code></td><td>Adds <code>StravaToken</code> and <code>SyncLog</code> tables</td></tr>
           <tr><td><code>0003_activity_average_cadence</code></td><td>Adds <code>average_cadence</code> field to <code>Activity</code></td></tr>
+          <tr><td><code>0004_alter_activity_sport_type_alter_activity_start_date</code></td><td>Alters field options on <code>sport_type</code> and <code>start_date</code></td></tr>
+          <tr><td><code>0005_activity_achievement_count_activity_calories</code></td><td>Adds <code>achievement_count</code> and <code>calories</code> fields to <code>Activity</code></td></tr>
+          <tr><td><code>0006_backfill_calories_achievement_count</code></td><td>Data migration: backfills <code>calories</code> and <code>achievement_count</code> from <code>raw_data</code></td></tr>
+          <tr><td><code>0007_achievement</code></td><td>Creates the <code>Achievement</code> table</td></tr>
+          <tr><td><code>0008_besteffort</code></td><td>Creates the <code>BestEffort</code> table</td></tr>
         </tbody>
       </table>
     </div>

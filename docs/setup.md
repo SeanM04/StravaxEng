@@ -54,6 +54,10 @@ DB_USER=postgres
 DB_PASSWORD=<your password>
 DB_HOST=localhost
 DB_PORT=5432
+
+# Optional: your local time zone (IANA name; default UTC). Dates, streaks and
+# weekly charts are shown and grouped in it.
+TIME_ZONE=Africa/Johannesburg
 ```
 
 Generate a `SECRET_KEY`:

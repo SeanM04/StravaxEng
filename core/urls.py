@@ -1,3 +1,4 @@
+"""URL routes for the StravaXEng pages, the background sync trigger and the health check."""
 from django.urls import path
 from . import views
 
@@ -9,6 +10,7 @@ urlpatterns = [
     path("records/",        views.records,           name="records"),
     path("coach/",          views.coach,             name="coach"),
     path("pipeline/",       views.pipeline_health,   name="pipeline"),
+    path("pipeline/sync/",  views.sync_now,          name="sync_now"),
     path("settings/",       views.settings_view,     name="settings"),
     path("health/",         views.health,            name="health"),
 ]

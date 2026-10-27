@@ -27,6 +27,8 @@
     <a href="models.html">Models</a>
     <a href="dashboard.html">UI &mdash; Pages</a>
     <a href="management-commands.html" class="active">Management Commands</a>
+    <div class="nav-section">Algorithms</div>
+    <a href="best-effort.html">Best-Effort Detection</a>
   </nav>
   <div class="sidebar-footer">StravaXEng &mdash; 2026</div>
 </aside>
@@ -129,6 +131,7 @@ python manage.py sync_activities --per-page 200</code></pre>
       <li>Creates a <code>SyncLog</code> row with <code>status = running</code>.</li>
       <li>Pages through <code>GET /api/v3/athlete/activities?after=&lt;ts&gt;&amp;per_page=&lt;n&gt;&amp;page=&lt;p&gt;</code>.</li>
       <li>For each activity, calls <code>Activity.objects.update_or_create(strava_id=...)</code>.</li>
+      <li>For each newly-created activity, fetches its GPS stream and runs the sliding-window best-effort algorithm via <code>best_effort.compute_and_save</code> (rate-limited: 1 s between calls, 15-minute pause after every 80 stream requests).</li>
       <li>Updates the SyncLog to <code>success</code> (or <code>failed</code> on exception).</li>
     </ol>
 
@@ -181,6 +184,89 @@ Done: 10 created, 2 updated across 1 page(s).</code></pre>
       </table>
     </div>
     <p>Safe to re-run — uses <code>update_or_create</code> on <code>strava_id</code>. Activities without a valid <code>id</code> or <code>start_local</code> are skipped.</p>
+
+    <hr class="section-divider">
+
+    <h2>fetch_achievements</h2>
+    <p>File: <code>core/management/commands/fetch_achievements.py</code></p>
+    <p>
+      Fetches segment achievements for every activity that has <code>achievement_count &gt; 0</code>
+      and stores them as <code>Achievement</code> rows. Each call hits
+      <code>GET /activities/{id}</code> (the detailed endpoint) to read
+      <code>segment_efforts[].achievements[]</code>.
+    </p>
+
+    <pre><code># Process all activities with achievement_count &gt; 0
+python manage.py fetch_achievements
+
+# Test with a small batch first
+python manage.py fetch_achievements --limit 20
+
+# Force re-fetch even if Achievement rows already exist
+python manage.py fetch_achievements --force</code></pre>
+
+    <h3>Arguments</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Argument</th><th>Type</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>--limit</code></td><td>int</td><td>none</td><td>Stop after processing this many activities</td></tr>
+          <tr><td><code>--force</code></td><td>flag</td><td>off</td><td>Re-fetch even if the activity already has stored achievements</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      Safe to re-run — uses <code>update_or_create</code> on
+      <code>(activity, segment_name, achievement_type)</code>. Activities with
+      <code>achievement_count = 0</code> are skipped without an API call. Achievements appear
+      on the activity detail page at <code>/activities/&lt;strava_id&gt;/</code>.
+      Rate-limited: 1 s between requests, 15-minute pause after every 80 calls.
+    </div>
+
+    <hr class="section-divider">
+
+    <h2>backfill_best_efforts</h2>
+    <p>File: <code>core/management/commands/backfill_best_efforts.py</code></p>
+    <p>
+      Computes sliding-window personal best times for every activity and stores them as
+      <code>BestEffort</code> rows. Fetches
+      <code>GET /activities/{id}/streams?keys=distance,time</code> for each activity, then
+      runs the two-pointer algorithm in <code>core/best_effort.py</code>.
+      See <a href="best-effort.html">Best-Effort Algorithm</a> for the full documentation.
+    </p>
+
+    <pre><code># Process all activities
+python manage.py backfill_best_efforts
+
+# Test with a small batch first
+python manage.py backfill_best_efforts --limit 10
+
+# Force-recompute even if BestEffort rows already exist
+python manage.py backfill_best_efforts --force</code></pre>
+
+    <h3>Arguments</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Argument</th><th>Type</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>--limit</code></td><td>int</td><td>none</td><td>Stop after processing this many activities</td></tr>
+          <tr><td><code>--force</code></td><td>flag</td><td>off</td><td>Recompute even if the activity already has <code>BestEffort</code> rows</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      Activities shorter than 1 K are skipped without an API call. Safe to re-run — uses
+      <code>update_or_create</code> on <code>(activity, target_distance_m)</code>.
+      Rate-limited: 1 s between requests, 15-minute pause after every 80 calls.
+      Going forward, <code>sync_activities</code> automatically computes best efforts for
+      newly-synced activities — this command is only needed for the initial historical backfill.
+    </div>
   </div>
 </div>
 

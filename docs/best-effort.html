@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Best-Effort Algorithm — StravaXEng Docs</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<aside class="sidebar">
+  <a class="sidebar-brand" href="index.html">
+    <div class="logo">
+      <svg width="18" height="18" viewBox="0 0 64 64" fill="none">
+        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <span>StravaXEng Docs</span>
+  </a>
+  <nav>
+    <div class="nav-section">Getting Started</div>
+    <a href="index.html">Overview</a>
+    <a href="setup.html">Setup</a>
+    <div class="nav-section">Reference</div>
+    <a href="architecture.html">Architecture</a>
+    <a href="strava-api.html">Strava API</a>
+    <a href="models.html">Models</a>
+    <a href="dashboard.html">UI &mdash; Pages</a>
+    <a href="management-commands.html">Management Commands</a>
+    <div class="nav-section">Algorithms</div>
+    <a href="best-effort.html" class="active">Best-Effort Detection</a>
+  </nav>
+  <div class="sidebar-footer">StravaXEng &mdash; 2026</div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div class="breadcrumb">
+      <a href="index.html">Docs</a>
+      <span class="sep">/</span>
+      <span>Best-Effort Algorithm</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <h1>Best-Effort Algorithm</h1>
+    <p class="page-lead">
+      Sliding-window detection of personal best times over GPS distance/time streams —
+      the same technique Strava uses for its own "Best Efforts" feature.
+    </p>
+
+    <h2>Target distances</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Label</th><th>Metres</th></tr></thead>
+        <tbody>
+          <tr><td>1K</td><td>1 000</td></tr>
+          <tr><td>3K</td><td>3 000</td></tr>
+          <tr><td>5K</td><td>5 000</td></tr>
+          <tr><td>10K</td><td>10 000</td></tr>
+          <tr><td>12K</td><td>12 000</td></tr>
+          <tr><td>15K</td><td>15 000</td></tr>
+          <tr><td>18K</td><td>18 000</td></tr>
+          <tr><td>Half Marathon</td><td>21 097</td></tr>
+          <tr><td>23K</td><td>23 000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Data source: GPS streams</h2>
+    <p>Strava exposes cumulative arrays for every activity via:</p>
+    <pre><code>GET /activities/{id}/streams?keys=distance,time&amp;key_by_type=true</code></pre>
+    <p>The response contains two parallel arrays:</p>
+    <pre><code>{
+  "distance": { "data": [0.0, 10.5, 21.2, 31.8, ...] },
+  "time":     { "data": [0, 1, 2, 3, ...] }
+}</code></pre>
+    <ul>
+      <li><strong><code>distance</code></strong> — cumulative metres from the activity start. Monotonically non-decreasing.</li>
+      <li><strong><code>time</code></strong> — cumulative seconds from the activity start. Monotonically non-decreasing.</li>
+      <li>Both arrays are the same length; element <code>k</code> represents the state at GPS sample <code>k</code>.</li>
+    </ul>
+    <p>
+      <code>strava_client.fetch_activity_streams(strava_id)</code> wraps this call and returns
+      <code>{"distance": [...], "time": [...]}</code>.
+    </p>
+
+    <h2>Algorithm — two-pointer sliding window</h2>
+    <pre><code>find_best_effort(distances, times, target_m) → float | None</code></pre>
+
+    <h3>Goal</h3>
+    <p>
+      Find the minimum value of <code>times[j] − times[i]</code> over all index pairs
+      <code>(i, j)</code> where <code>distances[j] − distances[i] &ge; target_m</code>.
+      This is the shortest elapsed time in which the athlete covered at least
+      <code>target_m</code> metres continuously in a single activity.
+    </p>
+
+    <h3>Why two pointers?</h3>
+    <p>A naïve O(n²) approach tries every <code>(i, j)</code> pair. Two pointers achieve
+    <strong>O(n)</strong> by exploiting a key invariant of monotone arrays:</p>
+    <div class="callout">
+      <strong>Invariant:</strong> the minimum valid <code>j</code> for <code>i+1</code>
+      is always &ge; the minimum valid <code>j</code> for <code>i</code>.
+    </div>
+    <p>
+      Proof: if <code>distances[j] − distances[i] &ge; target_m</code> and
+      <code>distances[i+1] &ge; distances[i]</code>, then
+      <code>distances[j] − distances[i+1] &le; distances[j] − distances[i]</code>.
+      So the window shrinks as the left pointer advances — <code>j</code> may need to
+      move further right but <em>never left</em>. It advances at most <code>n</code>
+      times across the entire outer loop.
+    </p>
+
+    <h3>Step-by-step walkthrough</h3>
+    <pre><code>Target: 500 m
+
+distances = [0,  100, 200, 300, 400, 500, 600, 700]   (metres, cumulative)
+times     = [0,   20,  40,  60,  70,  80,  85,  90]   (seconds, cumulative)
+
+i=0  advance j until distances[j] − 0 ≥ 500
+     → j=5  (500 m)    elapsed = 80 − 0  = 80 s    best = 80
+
+i=1  distances[5] − 100 = 400 &lt; 500, advance j
+     → j=6  (600 m)    elapsed = 85 − 20 = 65 s    best = 65
+
+i=2  distances[6] − 200 = 400 &lt; 500, advance j
+     → j=7  (700 m)    elapsed = 90 − 40 = 50 s ★  best = 50
+
+i=3  distances[7] − 300 = 400 &lt; 500, advance j
+     → j=8  = n        no valid right endpoint → break
+
+Result: 50 s  (the fastest 500 m segment, between index 2 and index 7)</code></pre>
+    <p>
+      The early <code>break</code> is correct: once <code>j</code> reaches the end of the
+      array without covering <code>target_m</code>, advancing <code>i</code> can only
+      reduce <code>distances[n-1] − distances[i]</code>, making it impossible to satisfy the
+      constraint. No future <code>i</code> can produce a valid window.
+    </p>
+
+    <h3>Complexity</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Property</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Time</td>
+            <td>O(n) — <code>i</code> advances <em>n</em> times; <code>j</code> advances at most <em>n</em> times total</td>
+          </tr>
+          <tr>
+            <td>Space</td>
+            <td>O(1) extra — two pointers and one running minimum</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Python implementation</h2>
+    <pre><code>def find_best_effort(
+    distances: list[float],
+    times: list[float],
+    target_m: float,
+) -> float | None:
+    n = len(distances)
+    if n &lt; 2 or len(times) != n or target_m &lt;= 0:
+        return None
+
+    best: float | None = None
+    j = 0
+
+    for i in range(n):
+        if j &lt;= i:
+            j = i + 1                         # j must always lead i
+
+        while j &lt; n and distances[j] - distances[i] &lt; target_m:
+            j += 1                            # expand window right
+
+        if j &gt;= n:
+            break                             # no valid window from here onward
+
+        elapsed = times[j] - times[i]
+        if best is None or elapsed &lt; best:
+            best = elapsed                    # new candidate best
+
+    return best</code></pre>
+    <p>Source: <a href="../core/best_effort.py"><code>core/best_effort.py</code></a></p>
+
+    <h2>BestEffort model</h2>
+    <p>
+      Each computed result is stored as a <code>BestEffort</code> row linked to the
+      <code>Activity</code> it came from.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>activity</code></td><td>FK → Activity</td><td>The activity in which the best was achieved</td></tr>
+          <tr><td><code>target_distance_m</code></td><td>IntegerField</td><td>Target in metres (e.g. <code>5000</code>)</td></tr>
+          <tr><td><code>elapsed_time_s</code></td><td>FloatField</td><td>Fastest elapsed time in seconds</td></tr>
+          <tr><td><code>achieved_at</code></td><td>DateField</td><td>Calendar date of the activity</td></tr>
+          <tr><td><code>pace_per_km</code></td><td>FloatField</td><td>Decimal minutes per kilometre</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The pair <code>(activity, target_distance_m)</code> is unique — running the computation again
+      is safe and will update existing rows rather than create duplicates.
+    </p>
+    <h3>Computed properties</h3>
+    <pre><code>effort.time_display   # → "21:34" or "1:05:12"
+effort.pace_display   # → "4:19"  (M:SS per km)</code></pre>
+
+    <h2>How the Records page uses this</h2>
+    <p>
+      The Records &amp; Streaks page queries the single best <code>BestEffort</code> per target
+      distance across all activities, then links back to the source activity:
+    </p>
+    <pre><code>best = (
+    BestEffort.objects
+    .filter(target_distance_m=5000)
+    .select_related("activity")
+    .order_by("elapsed_time_s")
+    .first()
+)</code></pre>
+    <p>
+      If no data exists for a target, the row is omitted and an empty-state prompt
+      tells the user to run <code>backfill_best_efforts</code>.
+    </p>
+
+    <h2>Running the backfill</h2>
+    <pre><code># Process all activities (one stream API call per activity)
+python manage.py backfill_best_efforts
+
+# Test with a small batch first
+python manage.py backfill_best_efforts --limit 10
+
+# Force-recompute even if BestEffort rows already exist
+python manage.py backfill_best_efforts --force</code></pre>
+    <p>
+      Activities shorter than 1 K are skipped without an API call. The command is
+      rate-aware: it sleeps 1 second between requests and pauses 15 minutes after every
+      80 calls to stay within Strava's 100-request/15-minute limit.
+    </p>
+    <p>
+      Going forward, <code>sync_activities</code> automatically computes best efforts for
+      every newly-synced activity without requiring a separate command.
+    </p>
+
+    <h2>Test coverage</h2>
+    <p>
+      Unit tests for <code>find_best_effort</code> live in <code>core/tests.py</code> and
+      require no API calls or database access — they pass purely synthetic arrays:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Test</th><th>What it covers</th></tr></thead>
+        <tbody>
+          <tr><td><code>test_exact_match</code></td><td>Single window that exactly spans the target</td></tr>
+          <tr><td><code>test_no_segment_meets_target</code></td><td>Activity shorter than the target → <code>None</code></td></tr>
+          <tr><td><code>test_fastest_window_not_first</code></td><td>Optimal window is mid-activity, not at index 0</td></tr>
+          <tr><td><code>test_multiple_1k_windows_returns_minimum</code></td><td>Several qualifying windows; the best is the last</td></tr>
+          <tr><td><code>test_empty_arrays_returns_none</code></td><td>Edge: empty input</td></tr>
+          <tr><td><code>test_single_element_returns_none</code></td><td>Edge: only one GPS point</td></tr>
+          <tr><td><code>test_zero_target_returns_none</code></td><td>Edge: <code>target_m = 0</code></td></tr>
+          <tr><td><code>test_mismatched_lengths_returns_none</code></td><td>Edge: distance and time arrays differ in length</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

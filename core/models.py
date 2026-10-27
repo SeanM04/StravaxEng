@@ -1,5 +1,9 @@
+"""Database models: the Strava token, sync audit log, activities and derived records."""
 import time
+from datetime import datetime, timezone as dt_timezone
+
 from django.db import models
+from django.utils import timezone
 
 
 class StravaToken(models.Model):
@@ -30,8 +34,17 @@ class StravaToken(models.Model):
 
     @property
     def is_expired(self) -> bool:
-        """Return True if the access token has expired or expires within 5 minutes."""
+        """Return True if the access token has expired or expires within 5 minutes.
+
+        An expired access token is normal: it lasts 6 hours and is renewed
+        automatically from the refresh token on the next API call.
+        """
         return time.time() >= (self.expires_at - 300)
+
+    @property
+    def expires_at_time(self) -> datetime:
+        """Return ``expires_at`` as an aware datetime, for display in local time."""
+        return datetime.fromtimestamp(self.expires_at, tz=dt_timezone.utc)
 
 
 class SyncLog(models.Model):
@@ -45,6 +58,12 @@ class SyncLog(models.Model):
     """
 
     class Status(models.TextChoices):
+        """Outcome of a sync run.
+
+        ``PARTIAL`` means activities were synced but a later stage (best
+        efforts or achievements) had failures that the next sync will retry.
+        """
+
         RUNNING = "running", "Running"
         SUCCESS = "success", "Success"
         PARTIAL = "partial", "Partial"
@@ -87,6 +106,8 @@ class Activity(models.Model):
     """
 
     class SportType(models.TextChoices):
+        """Common Strava sport types; other Strava values are stored as-is."""
+
         RUN   = "Run",   "Run"
         RIDE  = "Ride",  "Ride"
         SWIM  = "Swim",  "Swim"
@@ -116,6 +137,16 @@ class Activity(models.Model):
     commute              = models.BooleanField(default=False)
     raw_data             = models.JSONField(default=dict)
     synced_at            = models.DateTimeField(auto_now=True)
+    # Set once Strava has answered for this activity, even if nothing was found;
+    # left empty when a fetch fails so the next sync retries it.
+    best_efforts_checked_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When GPS streams were processed for best efforts (empty = still to do)",
+    )
+    achievements_checked_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When segment achievements were fetched (empty = still to do)",
+    )
 
     class Meta:
         ordering = ["-start_date"]
@@ -123,7 +154,7 @@ class Activity(models.Model):
 
     def __str__(self):
         """Return the activity name and its local date."""
-        return f"{self.name} ({self.start_date.date()})"
+        return f"{self.name} ({timezone.localdate(self.start_date)})"
 
     @property
     def distance_km(self) -> float:
@@ -167,6 +198,8 @@ class Achievement(models.Model):
     """
 
     class Type(models.TextChoices):
+        """Strava achievement kinds."""
+
         PR      = "pr",      "Personal Record"
         KOM     = "kom",     "King of the Mountain"
         CR      = "cr",      "Course Record"
