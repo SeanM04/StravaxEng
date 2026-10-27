@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Generated from management-commands.md by scripts/build_docs.py. Edit the Markdown, not this file. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -12,7 +13,8 @@
   <a class="sidebar-brand" href="index.html">
     <div class="logo">
       <svg width="18" height="18" viewBox="0 0 64 64" fill="none">
-        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6"
+              stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <span>StravaXEng Docs</span>
@@ -25,7 +27,7 @@
     <a href="architecture.html">Architecture</a>
     <a href="strava-api.html">Strava API</a>
     <a href="models.html">Models</a>
-    <a href="dashboard.html">UI &mdash; Pages</a>
+    <a href="dashboard.html">Dashboard</a>
     <a href="management-commands.html" class="active">Management Commands</a>
     <div class="nav-section">Algorithms</div>
     <a href="best-effort.html">Best-Effort Detection</a>
@@ -43,230 +45,331 @@
   </div>
 
   <div class="content">
-    <h1>Management Commands</h1>
-    <p class="page-lead">All custom <code>manage.py</code> commands available in StravaXEng.</p>
-
-    <pre><code>.venv\Scripts\activate       # Windows — activate venv first
-source .venv/bin/activate    # macOS / Linux</code></pre>
-
-    <hr class="section-divider">
-
-    <h2>get_strava_token</h2>
-    <p>File: <code>core/management/commands/get_strava_token.py</code></p>
-    <p>
-      Runs the full Strava OAuth2 authorization-code flow and saves the token pair directly to
-      the <code>StravaToken</code> table. <strong>This is the primary way to authenticate for the
-      first time or after a token has been invalidated.</strong>
-    </p>
-
-    <pre><code>python manage.py get_strava_token</code></pre>
-
-    <h3>Steps</h3>
-    <ol>
-      <li>Builds a Strava authorization URL and opens it in your browser.</li>
-      <li>You click <strong>Authorize</strong> on the Strava page.</li>
-      <li>Strava redirects to <code>http://localhost/?code=XXXX</code> — the page won't load, that's expected.</li>
-      <li>Copy the full URL from the address bar and paste it into the terminal.</li>
-      <li>The command exchanges the code for an access token + refresh token.</li>
-      <li>Both tokens are saved to the <code>StravaToken</code> DB row. No <code>.env</code> editing needed.</li>
-    </ol>
-    <div class="callout">
-      After this command succeeds, run <code>sync_activities</code> immediately.
-      Uses the <code>authorization_code</code> grant, which always works regardless of any
-      refresh token currently in <code>.env</code>.
-    </div>
-
-    <hr class="section-divider">
-
-    <h2>bootstrap_token</h2>
-    <p>File: <code>core/management/commands/bootstrap_token.py</code></p>
-    <p>
-      Seeds <code>StravaToken</code> by exchanging the <code>STRAVA_REFRESH_TOKEN</code> value
-      from <code>.env</code>. Use this only when you already have a known-valid refresh token.
-    </p>
-
-    <pre><code>python manage.py bootstrap_token</code></pre>
-
-    <div class="callout">
-      Will fail with <code>400 Bad Request</code> if the refresh token in <code>.env</code> has
-      already been rotated or invalidated — run <code>get_strava_token</code> instead. Once
-      <code>StravaToken</code> is in the DB, <code>strava_client.py</code> handles all future
-      rotations automatically.
-    </div>
-
-    <hr class="section-divider">
-
-    <h2>sync_activities</h2>
-    <p>File: <code>core/management/commands/sync_activities.py</code></p>
-    <p>
-      ETL pipeline: fetches activities from the Strava API and upserts them into the
-      <code>Activity</code> table. Writes a <code>SyncLog</code> row for every run.
-    </p>
-
-    <pre><code># Incremental sync (default) — fetches only since the last successful sync
+<h1 id="management-commands">Management Commands</h1>
+<p>All commands are run from the project root with the virtual environment active:</p>
+<pre><code class="language-bash">.venv\Scripts\activate       # Windows
+source .venv/bin/activate    # macOS / Linux
+</code></pre>
+<hr />
+<h2 id="get_strava_token">get_strava_token</h2>
+<p>File: <a href="../core/management/commands/get_strava_token.py"><code>core/management/commands/get_strava_token.py</code></a></p>
+<p>Runs the full Strava OAuth2 authorization-code flow and saves the token pair directly to
+the <code>StravaToken</code> table. This is how you connect your Strava account the first time, and
+re-connect it if Strava ever revokes access.</p>
+<h3 id="get_strava_token--usage"><code>get_strava_token</code> — usage</h3>
+<pre><code class="language-bash">python manage.py get_strava_token
+</code></pre>
+<h3 id="get_strava_token--steps"><code>get_strava_token</code> — steps</h3>
+<ol>
+<li>Builds a Strava authorization URL and opens it in your browser.</li>
+<li>You click <strong>Authorize</strong> on the Strava page.</li>
+<li>Strava redirects to <code>http://localhost/?code=XXXX</code> — the page won't load, that's expected.</li>
+<li>Copy the full URL from the address bar and paste it into the terminal.</li>
+<li>The command exchanges the code for an access token + refresh token.</li>
+<li>Both tokens are saved to the <code>StravaToken</code> DB row. No <code>.env</code> editing needed.</li>
+</ol>
+<h3 id="get_strava_token--notes"><code>get_strava_token</code> — notes</h3>
+<ul>
+<li>After this command succeeds, run <code>sync</code> immediately.</li>
+<li>You only need it once: every sync renews the token automatically. Run it again only if
+  Strava revokes access — the Settings and Pipeline pages then show <strong>Re-connect needed</strong>.</li>
+<li>Running it again for the same athlete replaces the stored token pair.</li>
+<li>Exits with an error if <code>.env</code> has no client ID/secret, you click <strong>Cancel</strong> on Strava, the
+  pasted URL has no code, or Strava rejects the code.</li>
+</ul>
+<hr />
+<h2 id="sync">sync</h2>
+<p>File: <a href="../core/management/commands/sync.py"><code>core/management/commands/sync.py</code></a></p>
+<p>The everyday command. Runs the whole pipeline in order:</p>
+<ol>
+<li><code>sync_activities</code> — new activities from Strava.</li>
+<li><code>backfill_best_efforts</code> — best efforts for any activity still missing them.</li>
+<li><code>fetch_achievements</code> — segment achievements for activities not yet fetched.</li>
+</ol>
+<p>If step 1 fails (e.g. the Strava token was revoked), steps 2–3 are skipped. If step 2 or 3
+has failures, the other still runs, the run's <code>SyncLog</code> is marked <code>partial</code> with the details,
+and the command exits with an error; the failed items are retried by the next sync. A lock file
+(<code>.sync.lock</code>) prevents two syncs from running at once; a lock older than 3 hours is treated
+as left over from a crashed run.</p>
+<p>The <strong>Sync now</strong> button on the Pipeline page runs this same command in the background and
+appends its output to <code>sync.log</code> in the project root.</p>
+<h3 id="sync--usage"><code>sync</code> — usage</h3>
+<pre><code class="language-bash">python manage.py sync          # incremental
+python manage.py sync --full   # re-fetch every activity
+</code></pre>
+<h3 id="sync--daily-schedule-windows-task-scheduler"><code>sync</code> — daily schedule (Windows Task Scheduler)</h3>
+<p><a href="../scripts/sync_daily.cmd"><code>scripts/sync_daily.cmd</code></a> runs <code>manage.py sync</code> with the project's
+virtualenv and appends the output to <code>sync.log</code>. Register it once from PowerShell (adjust the
+path and time as needed):</p>
+<pre><code class="language-powershell">schtasks /Create /TN &quot;StravaXEng daily sync&quot; /TR &quot;C:\Users\Mukar\OneDrive\Desktop\StravaXeng\scripts\sync_daily.cmd&quot; /SC DAILY /ST 21:00 /F
+</code></pre>
+<ul>
+<li>Runs while you are logged in; PostgreSQL must be running. A console window shows while it runs.</li>
+<li>Run it on demand: <code>schtasks /Run /TN "StravaXEng daily sync"</code></li>
+<li>Remove it: <code>schtasks /Delete /TN "StravaXEng daily sync" /F</code></li>
+</ul>
+<hr />
+<h2 id="sync_activities">sync_activities</h2>
+<p>File: <a href="../core/management/commands/sync_activities.py"><code>core/management/commands/sync_activities.py</code></a></p>
+<p>ETL pipeline: fetches activities from the Strava API and upserts them into the <code>Activity</code>
+table. Writes a <code>SyncLog</code> row for every run.</p>
+<h3 id="sync_activities--usage"><code>sync_activities</code> — usage</h3>
+<pre><code class="language-bash"># Incremental sync (default) — activities started up to 7 days before the newest stored one
 python manage.py sync_activities
 
-# Full re-sync — ignores last-sync timestamp, fetches everything
+# Full re-sync — fetches everything
 python manage.py sync_activities --full
 
 # Control page size (default 100, max 200)
-python manage.py sync_activities --per-page 200</code></pre>
-
-    <h3>Arguments</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Argument</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>--full</code></td><td>flag</td><td>off</td><td>Ignore last-sync timestamp and fetch all activities</td></tr>
-          <tr><td><code>--per-page</code></td><td>int</td><td>100</td><td>Activities per API page (capped at 200)</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>Steps</h3>
-    <ol>
-      <li>Determines the <code>after</code> timestamp — <code>finished_at</code> of the last <code>success</code> SyncLog, or none if running in full mode.</li>
-      <li>Creates a <code>SyncLog</code> row with <code>status = running</code>.</li>
-      <li>Pages through <code>GET /api/v3/athlete/activities?after=&lt;ts&gt;&amp;per_page=&lt;n&gt;&amp;page=&lt;p&gt;</code>.</li>
-      <li>For each activity, calls <code>Activity.objects.update_or_create(strava_id=...)</code>.</li>
-      <li>For each newly-created activity, fetches its GPS stream and runs the sliding-window best-effort algorithm via <code>best_effort.compute_and_save</code> (rate-limited: 1 s between calls, 15-minute pause after every 80 stream requests).</li>
-      <li>Updates the SyncLog to <code>success</code> (or <code>failed</code> on exception).</li>
-    </ol>
-
-    <h3>Example output</h3>
-    <pre><code>Incremental sync — fetching activities after 2026-06-15 08:00:00 UTC
-  Page 1: 12 activities processed
-Done: 10 created, 2 updated across 1 page(s).</code></pre>
-
-    <hr class="section-divider">
-
-    <h2>seed_from_mcp</h2>
-    <p>File: <code>core/management/commands/seed_from_mcp.py</code></p>
-    <p>
-      Seeds the <code>Activity</code> table from a JSON file exported via the Strava MCP tool.
-      Useful when the Strava OAuth token is unavailable and activities were retrieved through
-      Claude's MCP connection instead.
-    </p>
-
-    <pre><code>python manage.py seed_from_mcp --file mcp_activities.json</code></pre>
-
-    <h3>Arguments</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Argument</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>--file</code></td><td>path</td><td><code>mcp_activities.json</code></td><td>Path to the MCP-format JSON export</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>MCP vs REST API field mapping</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>MCP field</th><th>Model field</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>summary.distance</code></td><td><code>distance_meters</code></td></tr>
-          <tr><td><code>summary.moving_time</code></td><td><code>moving_time_seconds</code></td></tr>
-          <tr><td><code>summary.elapsed_time</code></td><td><code>elapsed_time_seconds</code></td></tr>
-          <tr><td><code>summary.elevation_gain</code></td><td><code>total_elevation_gain</code></td></tr>
-          <tr><td><code>summary.avg_speed</code></td><td><code>average_speed</code></td></tr>
-          <tr><td><code>summary.avg_cadence</code></td><td><code>average_cadence</code></td></tr>
-          <tr><td><code>start_local</code></td><td><code>start_date</code></td></tr>
-          <tr><td><code>is_trainer</code></td><td><code>trainer</code></td></tr>
-          <tr><td><code>is_commute</code></td><td><code>commute</code></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>Safe to re-run — uses <code>update_or_create</code> on <code>strava_id</code>. Activities without a valid <code>id</code> or <code>start_local</code> are skipped.</p>
-
-    <hr class="section-divider">
-
-    <h2>fetch_achievements</h2>
-    <p>File: <code>core/management/commands/fetch_achievements.py</code></p>
-    <p>
-      Fetches segment achievements for every activity that has <code>achievement_count &gt; 0</code>
-      and stores them as <code>Achievement</code> rows. Each call hits
-      <code>GET /activities/{id}</code> (the detailed endpoint) to read
-      <code>segment_efforts[].achievements[]</code>.
-    </p>
-
-    <pre><code># Process all activities with achievement_count &gt; 0
+python manage.py sync_activities --per-page 200
+</code></pre>
+<h3 id="sync_activities--arguments"><code>sync_activities</code> — arguments</h3>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--full</code></td>
+<td>flag</td>
+<td>off</td>
+<td>Fetch all activities instead of the last 7 days' worth</td>
+</tr>
+<tr>
+<td><code>--per-page</code></td>
+<td>int</td>
+<td>100</td>
+<td>Activities per API page (capped at 200)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="sync_activities--steps"><code>sync_activities</code> — steps</h3>
+<ol>
+<li>Marks any run left <code>running</code> for over 3 hours as <code>failed</code> (interrupted).</li>
+<li>Determines the <code>after</code> timestamp — the start time of the newest stored activity minus 7 days (<code>INCREMENTAL_OVERLAP</code>). Strava's <code>?after=</code> filters on when an activity <em>started</em>, so this catches activities uploaded late (e.g. a watch that syncs days afterwards); the re-fetched activities are simply upserted. None in full mode or when no
+   activities are stored yet.</li>
+<li>Creates a <code>SyncLog</code> row with <code>status = running</code>.</li>
+<li>Pages through <code>GET /api/v3/athlete/activities?after=&lt;ts&gt;&amp;per_page=&lt;n&gt;&amp;page=&lt;p&gt;</code>.</li>
+<li>For each activity, calls <code>Activity.objects.update_or_create(strava_id=...)</code>.</li>
+<li>For each newly-created activity, fetches its GPS stream and runs the sliding-window
+   best-effort algorithm via <code>best_effort.compute_and_save</code>.</li>
+<li>Updates the SyncLog with counts and an outcome: <code>success</code>; <code>partial</code> if some GPS streams
+   could not be fetched (those activities are retried by <code>backfill_best_efforts</code>); or <code>failed</code>
+   if activities could not be fetched, in which case the command exits with an error.</li>
+</ol>
+<h3 id="sync_activities--example-output"><code>sync_activities</code> — example output</h3>
+<pre><code class="language-text">Incremental sync — fetching activities started after 2026-10-20 08:28 SAST (7 days before the newest stored activity)
+  Page 1: 8 activities processed
+Done: 1 created, 7 updated across 1 page(s).
+</code></pre>
+<hr />
+<h2 id="seed_from_mcp">seed_from_mcp</h2>
+<p>File: <a href="../core/management/commands/seed_from_mcp.py"><code>core/management/commands/seed_from_mcp.py</code></a></p>
+<p>Seeds the <code>Activity</code> table from a JSON file exported via the Strava MCP tool. Useful when
+the Strava OAuth token is unavailable and activities were retrieved through Claude's MCP
+connection instead.</p>
+<h3 id="seed_from_mcp--usage"><code>seed_from_mcp</code> — usage</h3>
+<pre><code class="language-bash">python manage.py seed_from_mcp --file mcp_activities.json
+</code></pre>
+<h3 id="seed_from_mcp--arguments"><code>seed_from_mcp</code> — arguments</h3>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--file</code></td>
+<td>path</td>
+<td><code>mcp_activities.json</code></td>
+<td>Path to the MCP-format JSON export</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="seed_from_mcp--field-mapping"><code>seed_from_mcp</code> — field mapping</h3>
+<p>The MCP format nests summary fields differently from the REST API response.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>MCP field</th>
+<th>Model field</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>summary.distance</code></td>
+<td><code>distance_meters</code></td>
+</tr>
+<tr>
+<td><code>summary.moving_time</code></td>
+<td><code>moving_time_seconds</code></td>
+</tr>
+<tr>
+<td><code>summary.elapsed_time</code></td>
+<td><code>elapsed_time_seconds</code></td>
+</tr>
+<tr>
+<td><code>summary.elevation_gain</code></td>
+<td><code>total_elevation_gain</code></td>
+</tr>
+<tr>
+<td><code>summary.avg_speed</code></td>
+<td><code>average_speed</code></td>
+</tr>
+<tr>
+<td><code>summary.avg_cadence</code></td>
+<td><code>average_cadence</code></td>
+</tr>
+<tr>
+<td><code>start_local</code></td>
+<td><code>start_date</code></td>
+</tr>
+<tr>
+<td><code>is_trainer</code></td>
+<td><code>trainer</code></td>
+</tr>
+<tr>
+<td><code>is_commute</code></td>
+<td><code>commute</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="seed_from_mcp--notes"><code>seed_from_mcp</code> — notes</h3>
+<ul>
+<li>Safe to re-run — uses <code>update_or_create</code> on <code>strava_id</code>.</li>
+<li>Activities without a valid <code>id</code> or <code>start_local</code> are skipped.</li>
+<li>Exits with an error, importing nothing, if the file is missing or is not valid JSON.</li>
+</ul>
+<hr />
+<h2 id="fetch_achievements">fetch_achievements</h2>
+<p>File: <a href="../core/management/commands/fetch_achievements.py"><code>core/management/commands/fetch_achievements.py</code></a></p>
+<p>Fetches segment achievements for every activity that has <code>achievement_count &gt; 0</code> and has not
+been fetched yet, and stores them as <code>Achievement</code> rows. Each call hits <code>GET /activities/{id}</code> (the detailed endpoint) to
+read <code>segment_efforts[].achievements[]</code>.</p>
+<h3 id="fetch_achievements--usage"><code>fetch_achievements</code> — usage</h3>
+<pre><code class="language-bash"># Process activities not fetched yet
 python manage.py fetch_achievements
 
 # Test with a small batch first
 python manage.py fetch_achievements --limit 20
 
-# Force re-fetch even if Achievement rows already exist
-python manage.py fetch_achievements --force</code></pre>
-
-    <h3>Arguments</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Argument</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>--limit</code></td><td>int</td><td>none</td><td>Stop after processing this many activities</td></tr>
-          <tr><td><code>--force</code></td><td>flag</td><td>off</td><td>Re-fetch even if the activity already has stored achievements</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="callout">
-      Safe to re-run — uses <code>update_or_create</code> on
-      <code>(activity, segment_name, achievement_type)</code>. Activities with
-      <code>achievement_count = 0</code> are skipped without an API call. Achievements appear
-      on the activity detail page at <code>/activities/&lt;strava_id&gt;/</code>.
-      Rate-limited: 1 s between requests, 15-minute pause after every 80 calls.
-    </div>
-
-    <hr class="section-divider">
-
-    <h2>backfill_best_efforts</h2>
-    <p>File: <code>core/management/commands/backfill_best_efforts.py</code></p>
-    <p>
-      Computes sliding-window personal best times for every activity and stores them as
-      <code>BestEffort</code> rows. Fetches
-      <code>GET /activities/{id}/streams?keys=distance,time</code> for each activity, then
-      runs the two-pointer algorithm in <code>core/best_effort.py</code>.
-      See <a href="best-effort.html">Best-Effort Algorithm</a> for the full documentation.
-    </p>
-
-    <pre><code># Process all activities
+# Re-fetch every activity with achievement_count &gt; 0
+python manage.py fetch_achievements --force
+</code></pre>
+<h3 id="fetch_achievements--arguments"><code>fetch_achievements</code> — arguments</h3>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--limit</code></td>
+<td>int</td>
+<td>none</td>
+<td>Stop after processing this many activities</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>flag</td>
+<td>off</td>
+<td>Re-fetch activities that were already fetched</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="fetch_achievements--rate-limiting"><code>fetch_achievements</code> — rate limiting</h3>
+<p>Handled by the Strava client from Strava's usage headers — see
+<a href="strava-api.html#rate-limits">Rate limits</a>.</p>
+<h3 id="fetch_achievements--notes"><code>fetch_achievements</code> — notes</h3>
+<ul>
+<li>Safe to re-run — uses <code>update_or_create</code> on <code>(activity, segment_name, achievement_type)</code>.</li>
+<li>Activities with <code>achievement_count = 0</code> are skipped without an API call.</li>
+<li>Each fetched activity is stamped <code>achievements_checked_at</code>, even if it has no segment
+  achievements (Strava's count also includes best-effort PRs), so it is not fetched again.</li>
+<li>Failed requests leave the activity unstamped for the next run and make the command exit
+  with an error. An invalid Strava token stops it immediately.</li>
+<li>Achievements appear on the activity detail page at <code>/activities/&lt;strava_id&gt;/</code>.</li>
+</ul>
+<hr />
+<h2 id="backfill_best_efforts">backfill_best_efforts</h2>
+<p>File: <a href="../core/management/commands/backfill_best_efforts.py"><code>core/management/commands/backfill_best_efforts.py</code></a></p>
+<p>Computes sliding-window personal best times for activities that have not been processed yet
+(new, or whose last fetch failed) and stores them as <code>BestEffort</code> rows. Fetches <code>GET /activities/{id}/streams?keys=distance,time</code> for each
+activity, then runs the two-pointer algorithm in <code>core/best_effort.py</code>.</p>
+<p>See <a href="best-effort.html"><code>best-effort.md</code></a> for the full algorithm documentation.</p>
+<h3 id="backfill_best_efforts--usage"><code>backfill_best_efforts</code> — usage</h3>
+<pre><code class="language-bash"># Process activities not processed yet
 python manage.py backfill_best_efforts
 
 # Test with a small batch first
 python manage.py backfill_best_efforts --limit 10
 
-# Force-recompute even if BestEffort rows already exist
-python manage.py backfill_best_efforts --force</code></pre>
-
-    <h3>Arguments</h3>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Argument</th><th>Type</th><th>Default</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>--limit</code></td><td>int</td><td>none</td><td>Stop after processing this many activities</td></tr>
-          <tr><td><code>--force</code></td><td>flag</td><td>off</td><td>Recompute even if the activity already has <code>BestEffort</code> rows</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="callout">
-      Activities shorter than 1 K are skipped without an API call. Safe to re-run — uses
-      <code>update_or_create</code> on <code>(activity, target_distance_m)</code>.
-      Rate-limited: 1 s between requests, 15-minute pause after every 80 calls.
-      Going forward, <code>sync_activities</code> automatically computes best efforts for
-      newly-synced activities — this command is only needed for the initial historical backfill.
-    </div>
+# Recompute every eligible activity
+python manage.py backfill_best_efforts --force
+</code></pre>
+<h3 id="backfill_best_efforts--arguments"><code>backfill_best_efforts</code> — arguments</h3>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--limit</code></td>
+<td>int</td>
+<td>none</td>
+<td>Stop after processing this many activities</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>flag</td>
+<td>off</td>
+<td>Recompute activities that were already processed</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="backfill_best_efforts--rate-limiting"><code>backfill_best_efforts</code> — rate limiting</h3>
+<p>Handled by the Strava client from Strava's usage headers — see
+<a href="strava-api.html#rate-limits">Rate limits</a>.</p>
+<h3 id="backfill_best_efforts--notes"><code>backfill_best_efforts</code> — notes</h3>
+<ul>
+<li>Only GPS runs (<code>Run</code> / <code>TrailRun</code>, not on a treadmill) of at least 1 K are processed;
+  everything else is skipped without an API call. See <a href="best-effort.html"><code>best-effort.md</code></a>.</li>
+<li>Safe to re-run — uses <code>update_or_create</code> on <code>(activity, target_distance_m)</code>.</li>
+<li>Each processed activity is stamped <code>best_efforts_checked_at</code>, even if it had no GPS data,
+  so it is not fetched again.</li>
+<li>Failed requests leave the activity unstamped for the next run and make the command exit
+  with an error. An invalid Strava token stops it immediately.</li>
+<li><code>manage.py sync</code> runs this after <code>sync_activities</code>, so stream fetches that failed during
+  a sync are retried automatically.</li>
+</ul>
   </div>
 </div>
 

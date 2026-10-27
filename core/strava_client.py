@@ -8,8 +8,8 @@ Strava invalidates it and issues a *new* refresh token alongside the new access
 token.  If we discard that new refresh token, the next call will fail with 400.
 
 This module reads tokens from and writes them back to the StravaToken DB row,
-so every rotation is persisted automatically.  The .env file is only used for
-the initial bootstrap — after that, the DB is the source of truth.
+so every rotation is persisted automatically.  The first token pair comes from
+``manage.py get_strava_token``; .env holds only the app's client ID and secret.
 
 Rate limits
 -----------

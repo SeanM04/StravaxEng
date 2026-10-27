@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Generated from architecture.md by scripts/build_docs.py. Edit the Markdown, not this file. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -12,7 +13,8 @@
   <a class="sidebar-brand" href="index.html">
     <div class="logo">
       <svg width="18" height="18" viewBox="0 0 64 64" fill="none">
-        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6"
+              stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <span>StravaXEng Docs</span>
@@ -25,7 +27,7 @@
     <a href="architecture.html" class="active">Architecture</a>
     <a href="strava-api.html">Strava API</a>
     <a href="models.html">Models</a>
-    <a href="dashboard.html">UI &mdash; Pages</a>
+    <a href="dashboard.html">Dashboard</a>
     <a href="management-commands.html">Management Commands</a>
     <div class="nav-section">Algorithms</div>
     <a href="best-effort.html">Best-Effort Detection</a>
@@ -43,16 +45,24 @@
   </div>
 
   <div class="content">
-    <h1>Architecture</h1>
-    <p class="page-lead">Project structure, directory layout, and key design decisions.</p>
-
-    <h2>Directory structure</h2>
-    <pre><code>StravaXeng/                              ← repository root
+<h1 id="architecture">Architecture</h1>
+<h2 id="directory-structure">Directory structure</h2>
+<pre><code class="language-text">StravaXeng/                              ← repository root
 ├── .env                                 ← credentials and config (never commit)
+├── .env.example                         ← template for .env
+├── .gitignore
+├── .pylintrc                            ← pylint + Google docstring rules
 ├── manage.py                            ← Django CLI entry point
 ├── requirements.txt
-├── get_strava_token.py                  ← standalone OAuth helper (fallback)
-├── mcp_activities.json                  ← MCP-exported activity seed data
+├── requirements-dev.txt                 ← adds pylint and the docs builder
+├── Procfile                             ← gunicorn entry point
+├── mcp_activities.json                  ← MCP-exported activity seed data (not committed)
+├── sync.log                             ← output of background and scheduled syncs (not committed)
+│
+├── .claude/                             ← Claude Code settings: pylint hook on edited files
+├── scripts/
+│   ├── sync_daily.cmd                   ← run daily by Windows Task Scheduler
+│   └── build_docs.py                    ← builds docs/*.html from docs/*.md
 │
 ├── StravaxEng/                          ← Django project config package
 │   ├── settings.py                      ← all settings, reads from .env
@@ -61,81 +71,71 @@
 │   └── asgi.py
 │
 ├── core/                                ← main Django app
-│   ├── models.py                        ← StravaToken, SyncLog, Activity
-│   ├── views.py                         ← 7 view functions
-│   ├── urls.py                          ← 7 URL routes
-│   ├── admin.py
-│   ├── strava_client.py                 ← OAuth2 token management + API helpers
-│   ├── migrations/
-│   │   ├── 0001_initial.py
-│   │   ├── 0002_stravatoken_synclog.py
-│   │   └── 0003_activity_average_cadence.py
+│   ├── models.py                        ← StravaToken, SyncLog, Activity, Achievement, BestEffort
+│   ├── views.py                         ← page views, Sync now, health check
+│   ├── urls.py                          ← URL routes (see dashboard.md)
+│   ├── admin.py                         ← admin registrations
+│   ├── strava_client.py                 ← OAuth2 token renewal, API requests, rate limits
+│   ├── best_effort.py                   ← sliding-window best efforts from GPS streams
+│   ├── achievements.py                  ← segment achievements from activity details
+│   ├── sync_lock.py                     ← one-sync-at-a-time lock + background sync
+│   ├── tests.py
+│   ├── migrations/                      ← 0001–0010, see models.md
 │   ├── templates/core/
 │   │   ├── base.html                    ← master layout (sidebar, topbar, CSS)
 │   │   ├── dashboard.html
 │   │   ├── activities.html
+│   │   ├── activity_detail.html
 │   │   ├── analytics.html
 │   │   ├── records.html
 │   │   ├── coach.html
 │   │   ├── pipeline.html
 │   │   └── settings_page.html
-│   └── management/commands/
-│       ├── get_strava_token.py          ← full OAuth flow → saves to DB
-│       ├── bootstrap_token.py           ← seeds DB from .env refresh token
-│       ├── sync_activities.py           ← ETL: Strava API → PostgreSQL
-│       └── seed_from_mcp.py             ← seeds DB from MCP JSON export
+│   └── management/
+│       ├── activity_stage.py            ← shared base for the per-activity commands
+│       └── commands/
+│           ├── sync.py                  ← the whole pipeline: the three commands below
+│           ├── sync_activities.py       ← ETL: Strava API → PostgreSQL
+│           ├── backfill_best_efforts.py ← best efforts still to compute
+│           ├── fetch_achievements.py    ← segment achievements still to fetch
+│           ├── get_strava_token.py      ← connect Strava (OAuth) → saves to DB
+│           └── seed_from_mcp.py         ← seeds DB from MCP JSON export
 │
-└── docs/                                ← this folder</code></pre>
-
-    <h2>Design decisions</h2>
-
-    <h3>Rolling refresh tokens stored in the DB</h3>
-    <p>
-      Strava uses <strong>rolling refresh tokens</strong>: every call to <code>/oauth/token</code>
-      returns a brand-new refresh token and invalidates the previous one. Storing only the refresh
-      token in <code>.env</code> loses the rotated value on the first exchange.
-    </p>
-    <p>
-      <code>StravaToken</code> (a single-row DB table) is the source of truth for the token pair.
-      <code>strava_client.get_access_token()</code> reads the row, refreshes if expired, and writes
-      the new token pair back — so rotation is never lost.
-    </p>
-
-    <h3>SyncLog audit trail</h3>
-    <p>
-      Every run of <code>sync_activities</code> writes a <code>SyncLog</code> row recording
-      start/end time, status, counts of created/updated rows, pages fetched, and any error message.
-      The Pipeline Health page reads this table. The last <code>success</code> log's
-      <code>finished_at</code> is used as the <code>?after=</code> cutoff for the next incremental
-      sync, keeping API usage minimal.
-    </p>
-
-    <h3>Template inheritance</h3>
-    <p>All pages extend <code>core/templates/core/base.html</code>, which contains:</p>
-    <ul>
-      <li>All shared CSS (sidebar, topbar, stat cards, charts, badges, tables)</li>
-      <li>Sidebar navigation with active-state logic via the <code>active_page</code> context variable</li>
-      <li>Chart.js 4.4 CDN script tag</li>
-      <li><code>{% block content %}</code> for page-specific content</li>
-    </ul>
-
-    <h3><code>raw_data</code> JSON field</h3>
-    <p>
-      The full Strava API response is stored in <code>Activity.raw_data</code>. This allows
-      querying new fields from already-synced data without a re-sync or migration.
-    </p>
-
-    <h3>No Celery (yet)</h3>
-    <p>
-      Syncing is triggered manually via <code>manage.py sync_activities</code>. A task queue
-      (Celery + Redis) would be added if scheduled or background syncing is needed.
-    </p>
-
-    <h3>Single <code>core</code> app</h3>
-    <p>
-      All logic lives in one app. If the project grows (athlete profile, gear, segments),
-      additional apps can be split out.
-    </p>
+└── docs/                                ← this folder (edit the .md; the .html is generated)
+</code></pre>
+<h2 id="design-decisions">Design decisions</h2>
+<h3 id="rolling-refresh-tokens-stored-in-the-db">Rolling refresh tokens stored in the DB</h3>
+<p>Strava uses <strong>rolling refresh tokens</strong>: every call to <code>/oauth/token</code> returns a brand-new
+refresh token and invalidates the previous one. Storing only the refresh token in <code>.env</code>
+loses the rotated value on the first exchange.</p>
+<p><code>StravaToken</code> (a single-row DB table) is the source of truth for the token pair.
+<code>strava_client.get_access_token()</code> reads the row, refreshes if expired, and writes
+the new token pair back — so rotation is never lost.</p>
+<p>See <a href="strava-api.html"><code>strava-api.md</code></a> for the full OAuth flow.</p>
+<h3 id="synclog-audit-trail">SyncLog audit trail</h3>
+<p>Every run of <code>sync_activities</code> writes a <code>SyncLog</code> row that records start/end time,
+status (<code>running</code> / <code>success</code> / <code>partial</code> / <code>failed</code>), counts of created/updated rows,
+pages fetched, and any error message. The Pipeline Health page reads this table.</p>
+<p>The incremental sync's <code>?after=</code> cutoff is the start time of the newest stored activity minus 7 days (<code>INCREMENTAL_OVERLAP</code>). Strava's <code>?after=</code> filters on when an activity <em>started</em>, so this catches activities uploaded late (e.g. a watch that syncs days afterwards); the re-fetched activities are simply upserted, usually costing one page request.</p>
+<h3 id="template-inheritance">Template inheritance</h3>
+<p>All pages extend <code>core/templates/core/base.html</code>. The base template contains:</p>
+<ul>
+<li>All shared CSS (custom properties, sidebar, topbar, stat cards, charts, badges, tables)</li>
+<li>The sidebar navigation with active-state logic via <code>active_page</code> context variable</li>
+<li>Chart.js 4.4 CDN script tag</li>
+<li><code>{% block content %}</code> for page-specific content</li>
+</ul>
+<h3 id="raw_data-json-field"><code>raw_data</code> JSON field</h3>
+<p>The full Strava API response is stored in <code>Activity.raw_data</code>. This allows querying
+new fields from already-synced data without a re-sync or migration.</p>
+<h3 id="no-celery">No Celery</h3>
+<p>Syncing is a management command, <code>manage.py sync</code>, started three ways: by Windows Task
+Scheduler once a day, by the <strong>Sync now</strong> button (as a detached background process), or by
+hand. A lock file stops runs overlapping. A task queue (Celery + Redis) would only be worth
+adding if the app were hosted rather than run on one PC.</p>
+<h3 id="single-core-app">Single <code>core</code> app</h3>
+<p>All logic lives in one app. If the project grows (athlete profile, gear, segments),
+additional apps can be split out.</p>
   </div>
 </div>
 

@@ -1,5 +1,6 @@
 """Tests for the core app: models, view helpers, views, best efforts and the sync pipeline."""
 import io
+import json
 import os
 import tempfile
 import time
@@ -290,7 +291,7 @@ class ActivityDetailViewTests(TestCase):
         )
         response = self.client.get(f"/activities/{unfetched.strava_id}/")
         assert response.status_code == 200
-        assert b"fetch_achievements" in response.content
+        assert b"next sync pulls them" in response.content
 
     def test_detail_redirects_unauthenticated(self):
         response = self.client.get(f"/activities/{self.activity.strava_id}/")
@@ -661,6 +662,66 @@ class FetchAchievementsCommandTests(TestCase):
         with self.assertRaises(CommandError):
             self._fetch()
         assert self.strava_get.call_count == 1
+
+
+@override_settings(STRAVA_CLIENT_ID="12345", STRAVA_CLIENT_SECRET="app-secret")
+class GetStravaTokenCommandTests(TestCase):
+    REDIRECT = "http://localhost/?state=&code=auth-code&scope=read,activity:read_all"
+
+    def setUp(self):
+        self.enterContext(mock.patch("webbrowser.open"))
+        self.input = self.enterContext(mock.patch("builtins.input", return_value=self.REDIRECT))
+        self.post = self.enterContext(
+            mock.patch("core.management.commands.get_strava_token.requests.post")
+        )
+
+    def _connect(self):
+        call_command("get_strava_token", stdout=io.StringIO(), stderr=io.StringIO())
+
+    def test_saves_the_token_pair_strava_returns(self):
+        self.post.return_value = mock.Mock(ok=True, **{"json.return_value": {
+            "access_token": "new-access", "refresh_token": "new-refresh",
+            "expires_at": 1_800_000_000, "athlete": {"id": 42, "firstname": "Sam"},
+        }})
+        self._connect()
+        assert self.post.call_args.kwargs["data"]["code"] == "auth-code"
+        assert StravaToken.objects.get(athlete_id=42).refresh_token == "new-refresh"
+
+    def test_rejected_code_fails_and_saves_nothing(self):
+        self.post.return_value = mock.Mock(
+            ok=False, status_code=400, **{"json.return_value": {"message": "Bad Request"}}
+        )
+        with self.assertRaises(CommandError):
+            self._connect()
+        assert not StravaToken.objects.exists()
+
+    def test_cancelled_authorization_fails_without_calling_strava(self):
+        self.input.return_value = "http://localhost/?state=&error=access_denied"
+        with self.assertRaises(CommandError):
+            self._connect()
+        self.post.assert_not_called()
+
+
+class SeedFromMcpCommandTests(TestCase):
+    def _seed(self, path):
+        call_command("seed_from_mcp", file=str(path), stdout=io.StringIO())
+
+    def test_imports_activity_with_an_aware_start_time(self):
+        export = {
+            "id": 9001, "name": "MCP Run", "sport_type": "Run",
+            "start_local": "2024-03-01T06:30:00", "summary": {"distance": 5000},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "export.json"
+            path.write_text(json.dumps([export]), encoding="utf-8")
+            self._seed(path)
+        activity = Activity.objects.get(strava_id=9001)
+        assert activity.start_date == datetime.fromisoformat("2024-03-01T06:30:00+00:00")
+        assert activity.distance_meters == 5000
+
+    def test_missing_file_fails(self):
+        with self.assertRaises(CommandError):
+            self._seed(Path(tempfile.gettempdir()) / "no-such-mcp-export.json")
 
 
 # ── UX: pace trend, Strava connection status, local time ─────────────────────

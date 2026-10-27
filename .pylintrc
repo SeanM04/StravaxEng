@@ -20,6 +20,10 @@ disable=
 # Private helpers, Django's inner Meta class, test classes, test methods and
 # unittest fixtures don't need docstrings.
 no-docstring-rgx=^_|^Meta$|.*Tests$|^test_|^setUp$|^tearDown$
+# pylint's defaults, plus the Django project package: renaming it to snake_case
+# would change the settings path in manage.py, wsgi.py, asgi.py, pytest.ini and
+# the Procfile.
+good-names=i,j,k,ex,Run,_,StravaxEng
 
 [PARAMETER_DOCUMENTATION]
 # Google-style docstrings: Args / Returns / Raises / Yields sections.

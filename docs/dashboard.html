@@ -1,9 +1,10 @@
 <!DOCTYPE html>
+<!-- Generated from dashboard.md by scripts/build_docs.py. Edit the Markdown, not this file. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>UI — Pages — StravaXEng Docs</title>
+  <title>UI — Pages &amp; Templates — StravaXEng Docs</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,7 +13,8 @@
   <a class="sidebar-brand" href="index.html">
     <div class="logo">
       <svg width="18" height="18" viewBox="0 0 64 64" fill="none">
-        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6"
+              stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <span>StravaXEng Docs</span>
@@ -25,7 +27,7 @@
     <a href="architecture.html">Architecture</a>
     <a href="strava-api.html">Strava API</a>
     <a href="models.html">Models</a>
-    <a href="dashboard.html" class="active">UI &mdash; Pages</a>
+    <a href="dashboard.html" class="active">Dashboard</a>
     <a href="management-commands.html">Management Commands</a>
     <div class="nav-section">Algorithms</div>
     <a href="best-effort.html">Best-Effort Detection</a>
@@ -38,19 +40,17 @@
     <div class="breadcrumb">
       <a href="index.html">Docs</a>
       <span class="sep">/</span>
-      <span>UI &mdash; Pages</span>
+      <span>Dashboard</span>
     </div>
   </div>
 
   <div class="content">
-    <h1>UI &mdash; Pages &amp; Templates</h1>
-    <p class="page-lead">
-      StravaXEng is a multi-page Django app with a fixed dark sidebar and a Strava-orange topbar.
-      All pages extend a shared <code>base.html</code> master layout.
-    </p>
-
-    <h2>Base layout</h2>
-    <pre><code>┌─────────────────────────────────────────────────┐
+<h1 id="ui--pages--templates">UI — Pages &amp; Templates</h1>
+<p class="page-lead">StravaXEng is a <strong>multi-page Django app</strong> with a fixed dark sidebar and a Strava-orange topbar.
+All pages extend a shared <code>base.html</code> master layout.</p>
+<h2 id="base-layout">Base layout</h2>
+<p>File: <a href="../core/templates/core/base.html"><code>core/templates/core/base.html</code></a></p>
+<pre><code class="language-text">┌─────────────────────────────────────────────────┐
 │  Topbar (orange, sticky, 56 px)                 │
 ├──────────────┬──────────────────────────────────┤
 │              │                                  │
@@ -59,118 +59,226 @@
 │   dark       │                                  │
 │   (#111827)  │                                  │
 │              │                                  │
-└──────────────┴──────────────────────────────────┘</code></pre>
-    <p>
-      The active sidebar link is highlighted with an orange left border, controlled by the
-      <code>active_page</code> context variable passed from each view. Chart.js 4.4 is loaded
-      from CDN in <code>&lt;head&gt;</code> and available on every page.
-    </p>
-
-    <h2>Pages</h2>
-
-    <h3>Dashboard &mdash; <code>/</code></h3>
-    <p>View: <code>dashboard</code> &nbsp;|&nbsp; Template: <code>core/templates/core/dashboard.html</code></p>
-    <ul>
-      <li>6 stat cards: Total Activities, Total Distance (km), Moving Time (hrs), Elevation Gain (m), Avg Cadence (spm), Avg Heart Rate (bpm)</li>
-      <li>Chart.js line chart of run distance over time</li>
-      <li>Table of the 8 most recent activities (all sport types)</li>
-    </ul>
-
-    <h3>Activities &mdash; <code>/activities/</code></h3>
-    <p>View: <code>activities_list</code> &nbsp;|&nbsp; Template: <code>core/templates/core/activities.html</code></p>
-    <ul>
-      <li>Full paginated table of all activities (25 per page, Django <code>Paginator</code>)</li>
-      <li>Filter by sport type (dropdown) and name search (text input)</li>
-      <li>Sortable columns: Date, Distance, Elevation, Kudos, Cadence — toggling the same column reverses order</li>
-      <li>Sort state and filters preserved across pagination via query parameters</li>
-    </ul>
-
-    <h3>Analytics &mdash; <code>/analytics/</code></h3>
-    <p>View: <code>analytics</code> &nbsp;|&nbsp; Template: <code>core/templates/core/analytics.html</code></p>
-    <ul>
-      <li>Weekly volume bar chart (km per ISO week, all sport types)</li>
-      <li>Weekly activity count bar chart (same X-axis)</li>
-      <li>Pace trend line chart for runs only — min/km, Y-axis inverted so faster = higher</li>
-      <li>Summary stat cards: total run count and total run distance</li>
-    </ul>
-
-    <h3>Records &amp; Streaks &mdash; <code>/records/</code></h3>
-    <p>View: <code>records</code> &nbsp;|&nbsp; Template: <code>core/templates/core/records.html</code></p>
-    <p><strong>Activity Streaks</strong> (consecutive calendar days with &ge; 1 activity):</p>
-    <ul>
-      <li>Current Streak — counts backwards from today (or yesterday if no activity today)</li>
-      <li>Longest Streak</li>
-    </ul>
-    <p><strong>Weekly Streaks</strong> (ISO Mon&ndash;Sun weeks with &ge; 1 activity):</p>
-    <ul>
-      <li>Current Weekly Streak — counts backwards from the current ISO week</li>
-      <li>Longest Weekly Streak</li>
-      <li>Computed via <code>date.isocalendar()[:2]</code> and <code>date.fromisocalendar()</code> to handle year boundaries correctly</li>
-    </ul>
-    <p><strong>Personal Records:</strong> Longest Run, Fastest Pace (&ge; 3 km), Highest Elevation, Most Kudos.</p>
-    <p><strong>Sport Breakdown</strong> table &mdash; activity count and total distance per sport type.</p>
-
-    <h3>AI Coach Notes &mdash; <code>/coach/</code></h3>
-    <p>View: <code>coach</code> &nbsp;|&nbsp; Template: <code>core/templates/core/coach.html</code></p>
-    <ul>
-      <li>Rule-based insights: average weekly volume, pace trend (last 10 vs previous 10 runs), long-run habit, HR data status</li>
-      <li>Table of the 5 most recent runs</li>
-    </ul>
-
-    <h3>Pipeline Health &mdash; <code>/pipeline/</code></h3>
-    <p>View: <code>pipeline_health</code> &nbsp;|&nbsp; Template: <code>core/templates/core/pipeline.html</code></p>
-    <ul>
-      <li>Health stat cards: total activities, total runs, total syncs, success rate %, last successful sync, token status</li>
-      <li>Table of the 20 most recent <code>SyncLog</code> entries</li>
-      <li>Quick-reference command list</li>
-    </ul>
-
-    <h3>Settings &mdash; <code>/settings/</code></h3>
-    <p>View: <code>settings_view</code> &nbsp;|&nbsp; Template: <code>core/templates/core/settings_page.html</code></p>
-    <ul>
-      <li>Strava token status (valid / expired / missing) with masked token values</li>
-      <li>App configuration reference (athlete, watch, stack)</li>
-    </ul>
-
-    <h2>URL routes</h2>
-    <p>Defined in <code>core/urls.py</code>:</p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>URL</th><th>View</th><th>Name</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>/</code></td><td><code>dashboard</code></td><td><code>dashboard</code></td></tr>
-          <tr><td><code>/activities/</code></td><td><code>activities_list</code></td><td><code>activities</code></td></tr>
-          <tr><td><code>/analytics/</code></td><td><code>analytics</code></td><td><code>analytics</code></td></tr>
-          <tr><td><code>/records/</code></td><td><code>records</code></td><td><code>records</code></td></tr>
-          <tr><td><code>/coach/</code></td><td><code>coach</code></td><td><code>coach</code></td></tr>
-          <tr><td><code>/pipeline/</code></td><td><code>pipeline_health</code></td><td><code>pipeline</code></td></tr>
-          <tr><td><code>/settings/</code></td><td><code>settings_view</code></td><td><code>settings</code></td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h2>Shared CSS classes</h2>
-    <p>All defined in <code>base.html</code> and available on every page:</p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Class</th><th>Purpose</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>.stat-grid</code> / <code>.stat-card</code></td><td>Summary metric cards</td></tr>
-          <tr><td><code>.card</code> / <code>.card-title</code></td><td>White content panels</td></tr>
-          <tr><td><code>.streak-grid</code> / <code>.streak-card</code></td><td>Dark gradient streak cards</td></tr>
-          <tr><td><code>.record-grid</code> / <code>.record-card</code></td><td>PR cards with orange top border</td></tr>
-          <tr><td><code>.insight-grid</code> / <code>.insight-card</code></td><td>Coach insight cards with orange left border</td></tr>
-          <tr><td><code>.badge-run</code>, <code>.badge-ride</code>, &hellip;</td><td>Sport type colour badges</td></tr>
-          <tr><td><code>.chart-wrap</code></td><td>Fixed-height canvas wrapper (260 px)</td></tr>
-          <tr><td><code>.filter-bar</code></td><td>Inline form row for filters</td></tr>
-          <tr><td><code>.pagination</code></td><td>Numbered page links</td></tr>
-        </tbody>
-      </table>
-    </div>
+└──────────────┴──────────────────────────────────┘
+</code></pre>
+<p>Active sidebar link is highlighted with an orange left border. The current page is
+identified by the <code>active_page</code> context variable passed from each view.</p>
+<p>Chart.js 4.4 is loaded from CDN in <code>&lt;head&gt;</code> and available on every page.</p>
+<h2 id="pages">Pages</h2>
+<h3 id="dashboard--">Dashboard — <code>/</code></h3>
+<p>View: <code>dashboard</code><br />
+Template: <code>core/templates/core/dashboard.html</code></p>
+<ul>
+<li>6 stat cards: Total Activities, Total Distance (km), Moving Time (hrs), Elevation Gain (m), Avg Cadence (spm), Avg Heart Rate (bpm)</li>
+<li>Chart.js line chart of run distance over time</li>
+<li>Table of the 8 most recent activities (all sport types)</li>
+</ul>
+<h3 id="activities--activities">Activities — <code>/activities/</code></h3>
+<p>View: <code>activities_list</code><br />
+Template: <code>core/templates/core/activities.html</code></p>
+<ul>
+<li>Full paginated table of all activities (25 per page, Django <code>Paginator</code>)</li>
+<li>Filter by sport type (dropdown) and name search (text input)</li>
+<li>Sortable columns: Date, Distance, Elevation, Kudos, Cadence — toggling the same column reverses order</li>
+<li>Sort state and filters are preserved across pagination via query parameters</li>
+<li>Each activity links to its detail page</li>
+</ul>
+<h3 id="activity-detail--activitiesstrava_id">Activity detail — <code>/activities/&lt;strava_id&gt;/</code></h3>
+<p>View: <code>activity_detail</code><br />
+Template: <code>core/templates/core/activity_detail.html</code></p>
+<ul>
+<li>Stat cards: distance, moving time, pace, elevation, cadence, kudos, plus heart rate and
+  calories when Strava has them</li>
+<li>Segment achievements table (segment, achievement type, rank); shows "not fetched yet" until
+  the next sync fetches them</li>
+</ul>
+<h3 id="analytics--analytics">Analytics — <code>/analytics/</code></h3>
+<p>View: <code>analytics</code><br />
+Template: <code>core/templates/core/analytics.html</code></p>
+<ul>
+<li>Weekly volume bar chart (km per ISO week, all sport types)</li>
+<li>Weekly activity count bar chart (same X-axis)</li>
+<li>Pace trend line chart for runs only (min/km, Y-axis inverted so faster = higher)</li>
+<li>Summary stat cards: total run count and total run distance</li>
+</ul>
+<h3 id="records--streaks--records">Records &amp; Streaks — <code>/records/</code></h3>
+<p>View: <code>records</code><br />
+Template: <code>core/templates/core/records.html</code></p>
+<p><strong>Activity Streaks</strong> (daily, consecutive calendar days with ≥ 1 activity):</p>
+<ul>
+<li>Current Streak — counts backwards from today (or yesterday if no activity today)</li>
+<li>Longest Streak</li>
+</ul>
+<p><strong>Weekly Streaks</strong> (ISO Mon–Sun weeks with ≥ 1 activity):</p>
+<ul>
+<li>Current Weekly Streak — counts backwards from the current ISO week</li>
+<li>Longest Weekly Streak</li>
+<li>Computed via <code>date.isocalendar()[:2]</code> and <code>date.fromisocalendar()</code> to handle year boundaries correctly</li>
+</ul>
+<p><strong>Personal Records:</strong></p>
+<ul>
+<li>Longest Run (km)</li>
+<li>Fastest Pace for runs ≥ 3 km (min/km)</li>
+<li>Highest Elevation in a single run (m)</li>
+<li>Most Kudos in a single activity</li>
+</ul>
+<p><strong>Personal Bests (GPS Sliding Window)</strong> — fastest time over each standard distance in any
+GPS run, from the best efforts; see <a href="best-effort.html"><code>best-effort.md</code></a>.</p>
+<p><strong>Sport Breakdown</strong> table — activity count and total distance per sport type.</p>
+<h3 id="ai-coach-notes--coach">AI Coach Notes — <code>/coach/</code></h3>
+<p>View: <code>coach</code><br />
+Template: <code>core/templates/core/coach.html</code></p>
+<p>Rule-based insights computed from DB data:</p>
+<ul>
+<li>Average weekly running volume (km)</li>
+<li>Pace trend — compares average pace (shown as M:SS /km) of the last 10 runs vs the
+  previous 10. Changes under 2 % (<code>PACE_TREND_THRESHOLD</code>, ≈ 7 s/km at 6:00/km) are reported
+  as <strong>steady</strong> rather than improving/declining, since they are day-to-day noise</li>
+<li>Long-run habit analysis (runs ≥ 15 km)</li>
+<li>Heart rate card — Huawei Health sync instructions while no run has heart rate data</li>
+<li>Table of the 5 most recent runs</li>
+</ul>
+<h3 id="pipeline-health--pipeline">Pipeline Health — <code>/pipeline/</code></h3>
+<p>View: <code>pipeline_health</code><br />
+Template: <code>core/templates/core/pipeline.html</code></p>
+<ul>
+<li><strong>Sync now</strong> button (runs <code>manage.py sync</code> in the background)</li>
+<li>Health stat cards: total activities, total runs, total syncs, success rate %, last successful sync timestamp, items waiting for the next sync, Strava connection</li>
+<li>Table of the 20 most recent <code>SyncLog</code> entries with status, type (incremental/full), created/updated counts, and error messages</li>
+<li>Quick-reference command list</li>
+</ul>
+<h3 id="settings--settings">Settings — <code>/settings/</code></h3>
+<p>View: <code>settings_view</code><br />
+Template: <code>core/templates/core/settings_page.html</code></p>
+<ul>
+<li>Strava connection: <strong>Connected</strong>, <strong>Re-connection needed</strong> or <strong>Not connected</strong>, with
+  step-by-step <code>manage.py get_strava_token</code> instructions when action is needed. An expired
+  <em>access</em> token is not shown as a problem — it lasts 6 hours and renews automatically on the
+  next sync; re-connecting is only asked for when the latest sync failed because the refresh
+  token was revoked (and no new token has been saved since). Token values are never shown.</li>
+<li>App configuration reference (athlete, watch, time zone, stack)</li>
+</ul>
+<h2 id="local-time">Local time</h2>
+<p>All pages show dates and times in <code>TIME_ZONE</code> (set in <code>.env</code>, e.g. <code>Africa/Johannesburg</code>;
+default UTC). Streaks, weekly charts and best-effort dates use the local calendar day, so a run
+at 01:30 local time counts for that day, not the previous UTC day. The database stores UTC.</p>
+<h2 id="phones">Phones</h2>
+<p>Below 768 px wide the sidebar becomes a sticky, horizontally scrolling navigation bar across
+the top and the page body uses the full width; wide tables scroll sideways.</p>
+<h2 id="url-routes">URL routes</h2>
+<p>Defined in <a href="../core/urls.py"><code>core/urls.py</code></a>:</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>URL</th>
+<th>View</th>
+<th>Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/</code></td>
+<td><code>dashboard</code></td>
+<td><code>dashboard</code></td>
+</tr>
+<tr>
+<td><code>/activities/</code></td>
+<td><code>activities_list</code></td>
+<td><code>activities</code></td>
+</tr>
+<tr>
+<td><code>/activities/&lt;strava_id&gt;/</code></td>
+<td><code>activity_detail</code></td>
+<td><code>activity_detail</code></td>
+</tr>
+<tr>
+<td><code>/analytics/</code></td>
+<td><code>analytics</code></td>
+<td><code>analytics</code></td>
+</tr>
+<tr>
+<td><code>/records/</code></td>
+<td><code>records</code></td>
+<td><code>records</code></td>
+</tr>
+<tr>
+<td><code>/coach/</code></td>
+<td><code>coach</code></td>
+<td><code>coach</code></td>
+</tr>
+<tr>
+<td><code>/pipeline/</code></td>
+<td><code>pipeline_health</code></td>
+<td><code>pipeline</code></td>
+</tr>
+<tr>
+<td><code>/pipeline/sync/</code></td>
+<td><code>sync_now</code> (POST only)</td>
+<td><code>sync_now</code></td>
+</tr>
+<tr>
+<td><code>/settings/</code></td>
+<td><code>settings_view</code></td>
+<td><code>settings</code></td>
+</tr>
+<tr>
+<td><code>/health/</code></td>
+<td><code>health</code> (JSON status, no login)</td>
+<td><code>health</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2 id="shared-css-classes-defined-in-basehtml">Shared CSS classes (defined in <code>base.html</code>)</h2>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Class</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.stat-grid</code> / <code>.stat-card</code></td>
+<td>Summary metric cards</td>
+</tr>
+<tr>
+<td><code>.card</code> / <code>.card-title</code></td>
+<td>White content panels</td>
+</tr>
+<tr>
+<td><code>.streak-grid</code> / <code>.streak-card</code></td>
+<td>Dark gradient streak cards</td>
+</tr>
+<tr>
+<td><code>.record-grid</code> / <code>.record-card</code></td>
+<td>PR cards with orange top border</td>
+</tr>
+<tr>
+<td><code>.insight-grid</code> / <code>.insight-card</code></td>
+<td>Coach insight cards with orange left border</td>
+</tr>
+<tr>
+<td><code>.badge-run</code>, <code>.badge-ride</code>, …</td>
+<td>Sport type colour badges</td>
+</tr>
+<tr>
+<td><code>.chart-wrap</code></td>
+<td>Fixed-height canvas wrapper (260 px)</td>
+</tr>
+<tr>
+<td><code>.filter-bar</code></td>
+<td>Inline form row for filters</td>
+</tr>
+<tr>
+<td><code>.pagination</code></td>
+<td>Numbered page links</td>
+</tr>
+</tbody>
+</table>
+</div>
   </div>
 </div>
 

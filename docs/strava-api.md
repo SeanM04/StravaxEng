@@ -10,9 +10,9 @@
 
 Strava uses OAuth2 with **rolling refresh tokens**: every call to `/oauth/token` returns a
 brand-new refresh token and invalidates the previous one. The token pair must be persisted
-to the database (`StravaToken` model) on every exchange — never rely solely on `.env`.
+to the database (`StravaToken` model) on every exchange; `.env` never holds tokens.
 
-### Recommended: management command (automated)
+### Connecting: `get_strava_token`
 
 ```bash
 python manage.py get_strava_token
@@ -25,13 +25,10 @@ This command handles the full flow interactively:
 3. Copy the full URL from the address bar and paste it into the terminal.
 4. The command exchanges the code for tokens and saves the pair directly to `StravaToken` in the DB.
 
-No `.env` editing required. After this runs, `sync_activities` is ready to use.
+No `.env` editing required. After this runs, `sync` is ready to use, and every sync renews
+the token from then on. Run the command again only if Strava revokes access.
 
-### Manual alternative: `get_strava_token.py`
-
-If you prefer to handle the flow yourself:
-
-**Step 1 — Open the authorization URL in a browser:**
+Under the hood, step 1 opens this authorization URL:
 
 ```text
 https://www.strava.com/oauth/authorize
@@ -42,24 +39,8 @@ https://www.strava.com/oauth/authorize
   &scope=activity:read_all
 ```
 
-**Step 2 — Exchange the code:**
-
-```bash
-curl -X POST https://www.strava.com/oauth/token \
-  -d client_id=<YOUR_CLIENT_ID> \
-  -d client_secret=<YOUR_CLIENT_SECRET> \
-  -d code=<CODE_FROM_STEP_1> \
-  -d grant_type=authorization_code
-```
-
-The response contains `access_token`, `refresh_token`, and `expires_at`.
-Save `refresh_token` to `.env`, then run:
-
-```bash
-python manage.py bootstrap_token
-```
-
-This exchanges the `.env` refresh token and seeds `StravaToken` in the DB.
+and step 4 exchanges the code with `POST /oauth/token` (`grant_type=authorization_code`),
+whose response contains `access_token`, `refresh_token`, `expires_at` and `athlete`.
 
 ## Token refresh logic
 

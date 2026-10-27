@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Generated from index.md by scripts/build_docs.py. Edit the Markdown, not this file. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -12,7 +13,8 @@
   <a class="sidebar-brand" href="index.html">
     <div class="logo">
       <svg width="18" height="18" viewBox="0 0 64 64" fill="none">
-        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6"
+              stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <span>StravaXEng Docs</span>
@@ -25,7 +27,7 @@
     <a href="architecture.html">Architecture</a>
     <a href="strava-api.html">Strava API</a>
     <a href="models.html">Models</a>
-    <a href="dashboard.html">UI &mdash; Pages</a>
+    <a href="dashboard.html">Dashboard</a>
     <a href="management-commands.html">Management Commands</a>
     <div class="nav-section">Algorithms</div>
     <a href="best-effort.html">Best-Effort Detection</a>
@@ -43,80 +45,78 @@
   </div>
 
   <div class="content">
-    <h1>StravaXEng Documentation</h1>
-    <p class="page-lead">A Django + PostgreSQL ETL and visualization app for Strava activity data.</p>
-
-    <h2>Documentation pages</h2>
-    <div class="card-grid">
-      <a href="setup.html">
-        <div class="card">
-          <div class="card-title">Setup</div>
-          <p>Environment setup, installation, and first-run steps.</p>
-        </div>
-      </a>
-      <a href="architecture.html">
-        <div class="card">
-          <div class="card-title">Architecture</div>
-          <p>Project structure, directory layout, and design decisions.</p>
-        </div>
-      </a>
-      <a href="strava-api.html">
-        <div class="card">
-          <div class="card-title">Strava API</div>
-          <p>OAuth2 flow, rolling refresh token design, and API usage.</p>
-        </div>
-      </a>
-      <a href="models.html">
-        <div class="card">
-          <div class="card-title">Models</div>
-          <p>All three database models and their field reference.</p>
-        </div>
-      </a>
-      <a href="dashboard.html">
-        <div class="card">
-          <div class="card-title">UI &mdash; Pages</div>
-          <p>All 7 pages, layouts, charts, streaks, and URL routes.</p>
-        </div>
-      </a>
-      <a href="management-commands.html">
-        <div class="card">
-          <div class="card-title">Management Commands</div>
-          <p>All <code>manage.py</code> commands and their arguments.</p>
-        </div>
-      </a>
-      <a href="best-effort.html">
-        <div class="card">
-          <div class="card-title">Best-Effort Algorithm</div>
-          <p>Sliding-window PR detection over GPS streams — design, complexity proof, and worked example.</p>
-        </div>
-      </a>
-    </div>
-
-    <h2>Quick start</h2>
-    <pre><code># 1. Install dependencies
+<h1 id="stravaxeng-documentation">StravaXEng Documentation</h1>
+<p class="page-lead">A Django + PostgreSQL ETL and visualization app for Strava activity data.</p>
+<h2 id="contents">Contents</h2>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="setup.html">Setup</a></td>
+<td>Environment setup, installation, and first-run steps</td>
+</tr>
+<tr>
+<td><a href="architecture.html">Architecture</a></td>
+<td>Project structure, directory layout, and design decisions</td>
+</tr>
+<tr>
+<td><a href="strava-api.html">Strava API</a></td>
+<td>Strava OAuth2 flow, rolling refresh token design, rate limits</td>
+</tr>
+<tr>
+<td><a href="models.html">Models</a></td>
+<td>All five database models and their field reference</td>
+</tr>
+<tr>
+<td><a href="dashboard.html">Dashboard</a></td>
+<td>Multi-page UI — every page, layouts, charts, and streaks</td>
+</tr>
+<tr>
+<td><a href="management-commands.html">Management Commands</a></td>
+<td>All <code>manage.py</code> commands, the daily schedule, and their arguments</td>
+</tr>
+<tr>
+<td><a href="best-effort.html">Best-Effort Detection</a></td>
+<td>Sliding-window best-effort detection algorithm — design, complexity, and worked example</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2 id="quick-start">Quick start</h2>
+<pre><code class="language-bash"># 1. Install dependencies
 python -m venv .venv &amp;&amp; .venv\Scripts\activate
 pip install -r requirements.txt
 
-# 2. Apply migrations
-python manage.py migrate
+# 2. Configure environment
+cp .env.example .env   # fill in your values
 
-# 3. Obtain a fresh Strava token (opens browser)
+# 3. Apply migrations and create a login
+python manage.py migrate
+python manage.py createsuperuser
+
+# 4. Connect your Strava account (opens browser)
 python manage.py get_strava_token
 
-# 4. Seed your activity data
-python manage.py sync_activities
+# 5. Pull your activities, best efforts and achievements
+python manage.py sync
 
-# 5. Start the development server
-python manage.py runserver</code></pre>
-
-    <p>Then open <strong>http://localhost:8000</strong> for the dashboard.</p>
-
-    <h2>Conventions</h2>
-    <ul>
-      <li>All documentation is also available as <code>.md</code> files in the same folder.</li>
-      <li>Update both <code>.md</code> and <code>.html</code> in the same commit as any feature change.</li>
-      <li>Each page covers one concern — cross-link rather than duplicate.</li>
-    </ul>
+# 6. Start the development server
+python manage.py runserver
+</code></pre>
+<h2 id="conventions">Conventions</h2>
+<ul>
+<li>Docs are written in Markdown. The <code>.html</code> pages are generated from it — edit the <code>.md</code>,
+  then run <code>python scripts/build_docs.py</code>; never edit the <code>.html</code> by hand.</li>
+<li>Code blocks use the appropriate language tag.</li>
+<li>Each file documents one concern — cross-reference by relative link.</li>
+<li>Update the relevant doc in the same commit as any feature change.</li>
+</ul>
   </div>
 </div>
 

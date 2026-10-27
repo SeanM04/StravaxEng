@@ -9,7 +9,8 @@ Usage:
     python manage.py seed_from_mcp --file mcp_activities.json
 """
 import json
-from django.core.management.base import BaseCommand
+from datetime import timezone as dt_timezone
+from django.core.management.base import BaseCommand, CommandError
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from core.models import Activity
@@ -29,7 +30,7 @@ def _parse_dt(value: str):
     if dt is None:
         return None
     if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt, timezone.utc)
+        dt = timezone.make_aware(dt, dt_timezone.utc)
     return dt
 
 
@@ -93,24 +94,21 @@ class Command(BaseCommand):
         """Load and upsert activities from the specified JSON file.
 
         Args:
-            *args: Unused positional arguments passed by Django.
+            *_args: Unused positional arguments (required by Django's interface).
             **options: Parsed CLI options.  Key used: ``file`` (str path).
 
         Raises:
-            SystemExit: The command writes to stderr and returns early on
-                ``FileNotFoundError`` or ``json.JSONDecodeError`` rather than
-                propagating the exception.
+            CommandError: If the file does not exist or is not valid JSON.
+                Nothing is imported in that case.
         """
         path = options["file"]
         try:
             with open(path, encoding="utf-8") as f:
                 activities = json.load(f)
         except FileNotFoundError:
-            self.stderr.write(self.style.ERROR(f"File not found: {path}"))
-            return
+            raise CommandError(f"File not found: {path}") from None
         except json.JSONDecodeError as exc:
-            self.stderr.write(self.style.ERROR(f"Invalid JSON: {exc}"))
-            return
+            raise CommandError(f"Invalid JSON in {path}: {exc}") from exc
 
         created = updated = skipped = 0
         for item in activities:

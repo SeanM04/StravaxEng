@@ -93,7 +93,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # ── Strava ────────────────────────────────────────────────────────────────────
 STRAVA_CLIENT_ID     = os.getenv("STRAVA_CLIENT_ID")
 STRAVA_CLIENT_SECRET = os.getenv("STRAVA_CLIENT_SECRET")
-STRAVA_REFRESH_TOKEN = os.getenv("STRAVA_REFRESH_TOKEN")
 STRAVA_TOKEN_URL     = "https://www.strava.com/oauth/token"
 STRAVA_API_BASE      = "https://www.strava.com/api/v3"
 

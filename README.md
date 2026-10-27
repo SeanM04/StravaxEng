@@ -10,11 +10,12 @@ A Django + PostgreSQL ETL and visualization app for Strava activity data. Syncs 
 | --- | --- | --- |
 | Dashboard | `/` | Stat cards + run distance chart |
 | Activities | `/activities/` | Sortable, filterable paginated table |
+| Activity detail | `/activities/<strava_id>/` | Stats + segment achievements for one activity |
 | Analytics | `/analytics/` | Weekly volume bar chart + pace trend line |
-| Records & Streaks | `/records/` | PRs, daily/weekly activity streaks, sport breakdown |
+| Records & Streaks | `/records/` | PRs, distance bests, daily/weekly activity streaks, sport breakdown |
 | AI Coach Notes | `/coach/` | Avg weekly km, pace trend, long-run count |
-| Pipeline Health | `/pipeline/` | Sync log history + success rate |
-| Settings | `/settings/` | Token status |
+| Pipeline Health | `/pipeline/` | **Sync now** button, sync history, success rate |
+| Settings | `/settings/` | Strava connection status + re-connect steps |
 
 All pages require a logged-in Django user (`/admin/login/`).
 
@@ -22,40 +23,44 @@ All pages require a logged-in Django user (`/admin/login/`).
 
 ## Project structure
 
-```
+```text
 StravaXeng/
 ├── .env                           # Credentials (never commit — see .env.example)
 ├── .env.example                   # Template with placeholder values
 ├── requirements.txt
+├── requirements-dev.txt           # + pylint and the docs builder
 ├── Procfile                       # gunicorn entry point for production
 ├── pytest.ini
 ├── manage.py
+├── docs/                          # Documentation (Markdown + generated HTML)
+├── scripts/
+│   ├── sync_daily.cmd             # Daily sync, run by Windows Task Scheduler
+│   └── build_docs.py              # Builds docs/*.html from docs/*.md
 ├── StravaxEng/                    # Django project config
 │   ├── settings.py
 │   ├── urls.py
 │   └── wsgi.py
 └── core/                          # Main app
-    ├── models.py                  # StravaToken, SyncLog, Activity
-    ├── views.py                   # 7 view functions + helper utilities
+    ├── models.py                  # StravaToken, SyncLog, Activity, Achievement, BestEffort
+    ├── views.py                   # Page views, Sync now, health check
     ├── urls.py
     ├── admin.py
-    ├── strava_client.py           # OAuth2 token refresh + Strava API helpers
-    ├── tests.py                   # pytest-django unit tests
-    ├── templates/core/
-    │   ├── base.html              # Sidebar + topbar master layout
-    │   ├── dashboard.html
-    │   ├── activities.html
-    │   ├── analytics.html
-    │   ├── records.html
-    │   ├── coach.html
-    │   ├── pipeline.html
-    │   └── settings_page.html
+    ├── strava_client.py           # OAuth2 token renewal, API requests, rate limits
+    ├── best_effort.py             # Best efforts from GPS streams
+    ├── achievements.py            # Segment achievements
+    ├── sync_lock.py               # One sync at a time + background sync
+    ├── tests.py
+    ├── templates/core/            # base.html layout + one template per page
     └── management/commands/
-        ├── get_strava_token.py    # Full OAuth2 flow — use this first
-        ├── bootstrap_token.py     # Legacy: exchange refresh token from .env
+        ├── get_strava_token.py    # Connect your Strava account — use this first
+        ├── sync.py                # Everything below, in order — the everyday command
         ├── sync_activities.py     # Incremental/full sync from Strava API
+        ├── backfill_best_efforts.py
+        ├── fetch_achievements.py
         └── seed_from_mcp.py       # Load activities from a local JSON file
 ```
+
+Full layout and design decisions: [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
@@ -95,7 +100,7 @@ cp .env.example .env
 
 Edit `.env` and fill in your values:
 
-```
+```env
 SECRET_KEY=<long random string>
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
@@ -108,6 +113,9 @@ DB_PORT=5432
 
 STRAVA_CLIENT_ID=<your client id>
 STRAVA_CLIENT_SECRET=<your client secret>
+
+# Optional: local time zone for dates, streaks and weekly charts (default UTC)
+TIME_ZONE=Africa/Johannesburg
 ```
 
 Generate a `SECRET_KEY`:
@@ -149,15 +157,14 @@ Follow the prompt: authorize the app in the browser, paste the redirect URL back
 ### 8. Sync activities
 
 ```bash
-# Incremental sync (activities from the last 7 days before the newest stored one)
-python manage.py sync_activities
+# New activities, then best efforts and achievements (the first run fetches everything)
+python manage.py sync
 
-# Full sync (all pages)
-python manage.py sync_activities --full
-
-# Control page size
-python manage.py sync_activities --per-page 100
+# Re-fetch every activity
+python manage.py sync --full
 ```
+
+The **Sync now** button on the Pipeline page runs the same command in the background.
 
 ### 9. Start the development server
 
@@ -167,26 +174,46 @@ python manage.py runserver
 
 Open [http://localhost:8000](http://localhost:8000). Login at [http://localhost:8000/admin/login/](http://localhost:8000/admin/login/).
 
+### 10. (Optional) Sync every day
+
+On Windows, register `scripts/sync_daily.cmd` with Task Scheduler — see
+[the daily schedule](docs/management-commands.md#sync--daily-schedule-windows-task-scheduler).
+
 ---
 
 ## Management commands
 
 | Command | Description |
 | --- | --- |
-| `get_strava_token` | Full OAuth2 flow — opens browser, saves token to DB |
-| `bootstrap_token` | Exchange the refresh token in `.env` for a live token (legacy) |
+| `get_strava_token` | Connect (or re-connect) your Strava account — opens browser, saves token to DB |
+| `sync` | The everyday command: runs the three below in order (`--full` to re-fetch all) |
 | `sync_activities` | Incremental sync from Strava API (`--full` to re-sync all) |
+| `backfill_best_efforts` | Best efforts for runs not processed yet |
+| `fetch_achievements` | Segment achievements for activities not fetched yet |
 | `seed_from_mcp` | Load activities from a local JSON file |
+
+Details: [`docs/management-commands.md`](docs/management-commands.md).
 
 ---
 
 ## Running tests
 
 ```bash
-pytest
+pytest                          # or: python manage.py test core
 ```
 
-Tests cover Activity model properties, daily/weekly streak helpers, and the pace calculation utility.
+Tests cover the models, views and page helpers, best-effort detection, the sync pipeline
+(lock, statuses, retries, incremental cutoff), Strava rate limiting and token connection.
+
+---
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt
+pylint core StravaxEng scripts        # lint, incl. Google-style docstring checks
+python scripts/build_docs.py          # rebuild docs/*.html after editing docs/*.md
+```
 
 ---
 
@@ -212,4 +239,4 @@ gunicorn StravaxEng.wsgi --workers 2
 
 ## How token refresh works
 
-Strava uses **rolling refresh tokens** — every call to `/oauth/token` returns a brand-new refresh token and invalidates the old one. `strava_client.py` reads the current token from the `StravaToken` database row, refreshes if needed, and writes the new pair back before every API call. The database is the single source of truth; `.env` only provides the initial credential.
+Strava uses **rolling refresh tokens** — every call to `/oauth/token` returns a brand-new refresh token and invalidates the old one. `strava_client.py` reads the current token from the `StravaToken` database row, refreshes if needed, and writes the new pair back before every API call. The database is the single source of truth; `.env` only holds the app's client ID and secret.

@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(ls \"C:/Users/Mukar/OneDrive/Desktop/\")",
-      "Read(//c/Users/Mukar/OneDrive/Desktop/**)"
-    ]
-  }
-}

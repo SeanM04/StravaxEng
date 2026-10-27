@@ -60,7 +60,7 @@ Stores a single Strava activity. Upserted on every sync using `strava_id` as the
 | --- | --- | --- |
 | `strava_id` | BigIntegerField (unique) | Strava's own activity ID |
 | `name` | CharField(255) | Activity name set by the athlete |
-| `sport_type` | CharField(50) | One of: Run, Ride, Swim, Walk, Hike, Other |
+| `sport_type` | CharField(50) | Strava's sport type as sent, e.g. Run, TrailRun, Walk, Ride, Workout, WeightTraining, Yoga |
 | `start_date` | DateTimeField | Start time (stored in UTC; shown in `TIME_ZONE`) |
 | `distance_meters` | FloatField | Total distance in metres |
 | `moving_time_seconds` | IntegerField | Time in motion (seconds) |

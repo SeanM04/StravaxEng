@@ -14,8 +14,8 @@ source .venv/bin/activate    # macOS / Linux
 File: [`core/management/commands/get_strava_token.py`](../core/management/commands/get_strava_token.py)
 
 Runs the full Strava OAuth2 authorization-code flow and saves the token pair directly to
-the `StravaToken` table. This is the primary way to authenticate for the first time or
-after a token has been invalidated.
+the `StravaToken` table. This is how you connect your Strava account the first time, and
+re-connect it if Strava ever revokes access.
 
 ### `get_strava_token` — usage
 
@@ -35,30 +35,11 @@ python manage.py get_strava_token
 ### `get_strava_token` — notes
 
 - After this command succeeds, run `sync` immediately.
-- Uses the `authorization_code` grant, which always works regardless of the state of any
-  refresh token currently in `.env`.
-
----
-
-## bootstrap_token
-
-File: [`core/management/commands/bootstrap_token.py`](../core/management/commands/bootstrap_token.py)
-
-Seeds `StravaToken` by exchanging the `STRAVA_REFRESH_TOKEN` value from `.env`.
-Use this only when you already have a known-valid refresh token to seed.
-
-### `bootstrap_token` — usage
-
-```bash
-python manage.py bootstrap_token
-```
-
-### `bootstrap_token` — notes
-
-- Will fail with `400 Bad Request` if the refresh token in `.env` has already been rotated
-  or invalidated. Run `get_strava_token` instead.
-- Once `StravaToken` is in the DB, `strava_client.py` handles all future rotations
-  automatically — you do not need to run this again.
+- You only need it once: every sync renews the token automatically. Run it again only if
+  Strava revokes access — the Settings and Pipeline pages then show **Re-connect needed**.
+- Running it again for the same athlete replaces the stored token pair.
+- Exits with an error if `.env` has no client ID/secret, you click **Cancel** on Strava, the
+  pasted URL has no code, or Strava rejects the code.
 
 ---
 
@@ -195,6 +176,7 @@ The MCP format nests summary fields differently from the REST API response.
 
 - Safe to re-run — uses `update_or_create` on `strava_id`.
 - Activities without a valid `id` or `start_local` are skipped.
+- Exits with an error, importing nothing, if the file is missing or is not valid JSON.
 
 ---
 

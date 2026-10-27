@@ -1,17 +1,19 @@
 # Setup
 
+Everything you need to get StravaXEng running locally from scratch.
+
 ## Prerequisites
 
 - Python 3.11+
 - PostgreSQL (local or remote)
-- A Strava API application — see [strava-api.md](strava-api.md)
+- A Strava API application — see [Strava API](strava-api.md)
 
 ## Steps
 
 ### 1. Clone the repository
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/SeanM04/StravaxEng.git
 cd StravaXeng
 ```
 
@@ -31,17 +33,19 @@ source .venv/bin/activate
 
 ```bash
 pip install -r requirements.txt
+
+# For development (adds pylint and the docs builder)
+pip install -r requirements-dev.txt
 ```
 
 ### 4. Configure environment variables
 
-Edit `.env` in the project root. Required variables:
+Copy `.env.example` to `.env` in the project root and fill in your values:
 
 ```env
-# Strava
+# Strava app (strava.com/settings/api). Tokens are not kept here — see step 8.
 STRAVA_CLIENT_ID=<your client id>
 STRAVA_CLIENT_SECRET=<your client secret>
-STRAVA_REFRESH_TOKEN=<your refresh token>
 
 # Django
 SECRET_KEY=<long random string>
@@ -78,23 +82,45 @@ CREATE DATABASE stravaxeng;
 python manage.py migrate
 ```
 
-### 7. (Optional) Create an admin superuser
+### 7. Create a login
+
+Every page requires a logged-in user:
 
 ```bash
 python manage.py createsuperuser
 ```
 
-### 8. Sync activities from Strava
+### 8. Connect your Strava account
 
 ```bash
-python manage.py sync_activities --pages 3
+python manage.py get_strava_token
 ```
 
-### 9. Start the development server
+Your browser opens Strava's authorization page. Click **Authorize**, then copy the
+`http://localhost/?code=…` URL from the address bar (the page itself won't load — that's
+expected) and paste it into the terminal. The token is saved to the database. See
+[`get_strava_token`](management-commands.md#get_strava_token).
+
+### 9. Sync your activities
+
+```bash
+python manage.py sync
+```
+
+The first sync fetches your whole history, then best efforts and achievements; later syncs
+only fetch what's new. See [`sync`](management-commands.md#sync).
+
+### 10. Start the development server
 
 ```bash
 python manage.py runserver
 ```
 
-- Dashboard: http://localhost:8000
-- Admin panel: http://localhost:8000/admin
+- Dashboard: <http://localhost:8000> — log in with the user from step 7
+- Admin panel: <http://localhost:8000/admin>
+
+### 11. (Optional) Sync every day
+
+On Windows, register [`scripts/sync_daily.cmd`](../scripts/sync_daily.cmd) with Task
+Scheduler — see
+[daily schedule](management-commands.md#sync--daily-schedule-windows-task-scheduler).

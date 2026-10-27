@@ -44,3 +44,6 @@ mcp_activities.json
 
 # Sync lock (held while manage.py sync runs)
 .sync.lock
+
+# Claude Code: personal settings (.claude/settings.json is shared and committed)
+.claude/settings.local.json

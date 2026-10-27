@@ -4,15 +4,15 @@ A Django + PostgreSQL ETL and visualization app for Strava activity data.
 
 ## Contents
 
-| File | Description |
-|------|-------------|
-| [setup.md](setup.md) | Environment setup, installation, and first-run steps |
-| [architecture.md](architecture.md) | Project structure, directory layout, and design decisions |
-| [strava-api.md](strava-api.md) | Strava OAuth2 flow, rolling refresh token design, and API usage |
-| [models.md](models.md) | All three database models and their field reference |
-| [dashboard.md](dashboard.md) | Multi-page UI — all 7 pages, layouts, charts, and streaks |
-| [management-commands.md](management-commands.md) | All `manage.py` commands and their arguments |
-| [best-effort.md](best-effort.md) | Sliding-window best-effort detection algorithm — design, complexity, and worked example |
+| Page | Description |
+| --- | --- |
+| [Setup](setup.md) | Environment setup, installation, and first-run steps |
+| [Architecture](architecture.md) | Project structure, directory layout, and design decisions |
+| [Strava API](strava-api.md) | Strava OAuth2 flow, rolling refresh token design, rate limits |
+| [Models](models.md) | All five database models and their field reference |
+| [Dashboard](dashboard.md) | Multi-page UI — every page, layouts, charts, and streaks |
+| [Management Commands](management-commands.md) | All `manage.py` commands, the daily schedule, and their arguments |
+| [Best-Effort Detection](best-effort.md) | Sliding-window best-effort detection algorithm — design, complexity, and worked example |
 
 ## Quick start
 
@@ -24,14 +24,15 @@ pip install -r requirements.txt
 # 2. Configure environment
 cp .env.example .env   # fill in your values
 
-# 3. Apply migrations
+# 3. Apply migrations and create a login
 python manage.py migrate
+python manage.py createsuperuser
 
-# 4. Obtain a fresh Strava token (opens browser)
+# 4. Connect your Strava account (opens browser)
 python manage.py get_strava_token
 
-# 5. Seed your activity data
-python manage.py sync_activities
+# 5. Pull your activities, best efforts and achievements
+python manage.py sync
 
 # 6. Start the development server
 python manage.py runserver
@@ -39,7 +40,8 @@ python manage.py runserver
 
 ## Conventions
 
-- All documentation is written in Markdown with matching `.html` companions.
+- Docs are written in Markdown. The `.html` pages are generated from it — edit the `.md`,
+  then run `python scripts/build_docs.py`; never edit the `.html` by hand.
 - Code blocks use the appropriate language tag.
 - Each file documents one concern — cross-reference by relative link.
 - Update the relevant doc in the same commit as any feature change.

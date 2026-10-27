@@ -7,7 +7,7 @@ All pages extend a shared `base.html` master layout.
 
 File: [`core/templates/core/base.html`](../core/templates/core/base.html)
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │  Topbar (orange, sticky, 56 px)                 │
 ├──────────────┬──────────────────────────────────┤
@@ -45,6 +45,17 @@ Template: `core/templates/core/activities.html`
 - Filter by sport type (dropdown) and name search (text input)
 - Sortable columns: Date, Distance, Elevation, Kudos, Cadence — toggling the same column reverses order
 - Sort state and filters are preserved across pagination via query parameters
+- Each activity links to its detail page
+
+### Activity detail — `/activities/<strava_id>/`
+
+View: `activity_detail`  
+Template: `core/templates/core/activity_detail.html`
+
+- Stat cards: distance, moving time, pace, elevation, cadence, kudos, plus heart rate and
+  calories when Strava has them
+- Segment achievements table (segment, achievement type, rank); shows "not fetched yet" until
+  the next sync fetches them
 
 ### Analytics — `/analytics/`
 
@@ -62,19 +73,25 @@ View: `records`
 Template: `core/templates/core/records.html`
 
 **Activity Streaks** (daily, consecutive calendar days with ≥ 1 activity):
+
 - Current Streak — counts backwards from today (or yesterday if no activity today)
 - Longest Streak
 
 **Weekly Streaks** (ISO Mon–Sun weeks with ≥ 1 activity):
+
 - Current Weekly Streak — counts backwards from the current ISO week
 - Longest Weekly Streak
 - Computed via `date.isocalendar()[:2]` and `date.fromisocalendar()` to handle year boundaries correctly
 
 **Personal Records:**
+
 - Longest Run (km)
 - Fastest Pace for runs ≥ 3 km (min/km)
 - Highest Elevation in a single run (m)
 - Most Kudos in a single activity
+
+**Personal Bests (GPS Sliding Window)** — fastest time over each standard distance in any
+GPS run, from the best efforts; see [`best-effort.md`](best-effort.md).
 
 **Sport Breakdown** table — activity count and total distance per sport type.
 
@@ -84,10 +101,11 @@ View: `coach`
 Template: `core/templates/core/coach.html`
 
 Rule-based insights computed from DB data:
+
 - Average weekly running volume (km)
-- Pace trend — compares average pace (shown as M:SS /km) of the last 10 runs vs the previous
-  10. Changes under 2 % (`PACE_TREND_THRESHOLD`, ≈ 7 s/km at 6:00/km) are reported as
-  **steady** rather than improving/declining, since they are day-to-day noise
+- Pace trend — compares average pace (shown as M:SS /km) of the last 10 runs vs the
+  previous 10. Changes under 2 % (`PACE_TREND_THRESHOLD`, ≈ 7 s/km at 6:00/km) are reported
+  as **steady** rather than improving/declining, since they are day-to-day noise
 - Long-run habit analysis (runs ≥ 15 km)
 - Heart rate card — Huawei Health sync instructions while no run has heart rate data
 - Table of the 5 most recent runs
@@ -130,19 +148,22 @@ the top and the page body uses the full width; wide tables scroll sideways.
 Defined in [`core/urls.py`](../core/urls.py):
 
 | URL | View | Name |
-|-----|------|------|
+| --- | --- | --- |
 | `/` | `dashboard` | `dashboard` |
 | `/activities/` | `activities_list` | `activities` |
+| `/activities/<strava_id>/` | `activity_detail` | `activity_detail` |
 | `/analytics/` | `analytics` | `analytics` |
 | `/records/` | `records` | `records` |
 | `/coach/` | `coach` | `coach` |
 | `/pipeline/` | `pipeline_health` | `pipeline` |
+| `/pipeline/sync/` | `sync_now` (POST only) | `sync_now` |
 | `/settings/` | `settings_view` | `settings` |
+| `/health/` | `health` (JSON status, no login) | `health` |
 
 ## Shared CSS classes (defined in `base.html`)
 
 | Class | Purpose |
-|-------|---------|
+| --- | --- |
 | `.stat-grid` / `.stat-card` | Summary metric cards |
 | `.card` / `.card-title` | White content panels |
 | `.streak-grid` / `.streak-card` | Dark gradient streak cards |

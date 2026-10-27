@@ -5,11 +5,20 @@
 ```text
 StravaXeng/                              ← repository root
 ├── .env                                 ← credentials and config (never commit)
+├── .env.example                         ← template for .env
 ├── .gitignore
+├── .pylintrc                            ← pylint + Google docstring rules
 ├── manage.py                            ← Django CLI entry point
 ├── requirements.txt
-├── get_strava_token.py                  ← standalone OAuth helper (fallback)
-├── mcp_activities.json                  ← MCP-exported activity seed data
+├── requirements-dev.txt                 ← adds pylint and the docs builder
+├── Procfile                             ← gunicorn entry point
+├── mcp_activities.json                  ← MCP-exported activity seed data (not committed)
+├── sync.log                             ← output of background and scheduled syncs (not committed)
+│
+├── .claude/                             ← Claude Code settings: pylint hook on edited files
+├── scripts/
+│   ├── sync_daily.cmd                   ← run daily by Windows Task Scheduler
+│   └── build_docs.py                    ← builds docs/*.html from docs/*.md
 │
 ├── StravaxEng/                          ← Django project config package
 │   ├── settings.py                      ← all settings, reads from .env
@@ -18,31 +27,37 @@ StravaXeng/                              ← repository root
 │   └── asgi.py
 │
 ├── core/                                ← main Django app
-│   ├── models.py                        ← StravaToken, SyncLog, Activity
-│   ├── views.py                         ← 7 view functions
-│   ├── urls.py                          ← 7 URL routes
+│   ├── models.py                        ← StravaToken, SyncLog, Activity, Achievement, BestEffort
+│   ├── views.py                         ← page views, Sync now, health check
+│   ├── urls.py                          ← URL routes (see dashboard.md)
 │   ├── admin.py                         ← admin registrations
-│   ├── strava_client.py                 ← OAuth2 token management + API helpers
-│   ├── migrations/
-│   │   ├── 0001_initial.py              ← Activity table
-│   │   ├── 0002_stravatoken_synclog.py  ← StravaToken + SyncLog tables
-│   │   └── 0003_activity_average_cadence.py
+│   ├── strava_client.py                 ← OAuth2 token renewal, API requests, rate limits
+│   ├── best_effort.py                   ← sliding-window best efforts from GPS streams
+│   ├── achievements.py                  ← segment achievements from activity details
+│   ├── sync_lock.py                     ← one-sync-at-a-time lock + background sync
+│   ├── tests.py
+│   ├── migrations/                      ← 0001–0010, see models.md
 │   ├── templates/core/
 │   │   ├── base.html                    ← master layout (sidebar, topbar, CSS)
 │   │   ├── dashboard.html
 │   │   ├── activities.html
+│   │   ├── activity_detail.html
 │   │   ├── analytics.html
 │   │   ├── records.html
 │   │   ├── coach.html
 │   │   ├── pipeline.html
 │   │   └── settings_page.html
-│   └── management/commands/
-│       ├── get_strava_token.py          ← full OAuth flow → saves to DB
-│       ├── bootstrap_token.py           ← seeds DB from .env refresh token
-│       ├── sync_activities.py           ← ETL: Strava API → PostgreSQL
-│       └── seed_from_mcp.py             ← seeds DB from MCP JSON export
+│   └── management/
+│       ├── activity_stage.py            ← shared base for the per-activity commands
+│       └── commands/
+│           ├── sync.py                  ← the whole pipeline: the three commands below
+│           ├── sync_activities.py       ← ETL: Strava API → PostgreSQL
+│           ├── backfill_best_efforts.py ← best efforts still to compute
+│           ├── fetch_achievements.py    ← segment achievements still to fetch
+│           ├── get_strava_token.py      ← connect Strava (OAuth) → saves to DB
+│           └── seed_from_mcp.py         ← seeds DB from MCP JSON export
 │
-└── docs/                                ← this folder
+└── docs/                                ← this folder (edit the .md; the .html is generated)
 ```
 
 ## Design decisions
@@ -81,10 +96,12 @@ All pages extend `core/templates/core/base.html`. The base template contains:
 The full Strava API response is stored in `Activity.raw_data`. This allows querying
 new fields from already-synced data without a re-sync or migration.
 
-### No Celery (yet)
+### No Celery
 
-Syncing is triggered manually via `manage.py sync_activities`. A task queue
-(Celery + Redis) would be added if scheduled/background syncing is needed.
+Syncing is a management command, `manage.py sync`, started three ways: by Windows Task
+Scheduler once a day, by the **Sync now** button (as a detached background process), or by
+hand. A lock file stops runs overlapping. A task queue (Celery + Redis) would only be worth
+adding if the app were hosted rather than run on one PC.
 
 ### Single `core` app
 

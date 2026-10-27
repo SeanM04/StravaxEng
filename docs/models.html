@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Generated from models.md by scripts/build_docs.py. Edit the Markdown, not this file. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -12,7 +13,8 @@
   <a class="sidebar-brand" href="index.html">
     <div class="logo">
       <svg width="18" height="18" viewBox="0 0 64 64" fill="none">
-        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M26 52L38 12l10 24 6-12" stroke="#fff" stroke-width="6"
+              stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
     <span>StravaXEng Docs</span>
@@ -25,7 +27,7 @@
     <a href="architecture.html">Architecture</a>
     <a href="strava-api.html">Strava API</a>
     <a href="models.html" class="active">Models</a>
-    <a href="dashboard.html">UI &mdash; Pages</a>
+    <a href="dashboard.html">Dashboard</a>
     <a href="management-commands.html">Management Commands</a>
     <div class="nav-section">Algorithms</div>
     <a href="best-effort.html">Best-Effort Detection</a>
@@ -43,186 +45,410 @@
   </div>
 
   <div class="content">
-    <h1>Models</h1>
-    <p class="page-lead">All five database models defined in <code>core/models.py</code>.</p>
-
-    <h2>StravaToken</h2>
-    <p>
-      Persists the Strava OAuth2 token pair for a single athlete. Strava uses rolling refresh
-      tokens — every <code>/oauth/token</code> call returns a new refresh token and invalidates the
-      old one. This model is the single source of truth; <code>strava_client.py</code> reads from
-      and writes back to this row so the rotation is never lost.
-    </p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>athlete_id</code></td><td>BigIntegerField (unique)</td><td>Strava athlete ID</td></tr>
-          <tr><td><code>access_token</code></td><td>TextField</td><td>Current OAuth access token (valid ~6 hours)</td></tr>
-          <tr><td><code>refresh_token</code></td><td>TextField</td><td>Current rolling refresh token</td></tr>
-          <tr><td><code>expires_at</code></td><td>BigIntegerField</td><td>Unix timestamp when the access token expires</td></tr>
-          <tr><td><code>updated_at</code></td><td>DateTimeField (auto)</td><td>Timestamp of last token rotation</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <h3>Computed property</h3>
-    <pre><code>token.is_expired  # True if access token expires within the next 5 minutes</code></pre>
-
-    <hr class="section-divider">
-
-    <h2>SyncLog</h2>
-    <p>Audit trail for every run of <code>sync_activities</code>. One row per ETL execution.</p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>started_at</code></td><td>DateTimeField (auto)</td><td>When the sync started</td></tr>
-          <tr><td><code>finished_at</code></td><td>DateTimeField (nullable)</td><td>When the sync completed</td></tr>
-          <tr><td><code>status</code></td><td>CharField</td><td><code>running</code> / <code>success</code> / <code>partial</code> / <code>failed</code></td></tr>
-          <tr><td><code>incremental</code></td><td>BooleanField</td><td><code>True</code> = incremental, <code>False</code> = full re-sync</td></tr>
-          <tr><td><code>pages_fetched</code></td><td>IntegerField</td><td>Number of API pages retrieved</td></tr>
-          <tr><td><code>activities_created</code></td><td>IntegerField</td><td>New rows inserted</td></tr>
-          <tr><td><code>activities_updated</code></td><td>IntegerField</td><td>Existing rows updated</td></tr>
-          <tr><td><code>error_message</code></td><td>TextField</td><td>Error detail if status is <code>failed</code></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>
-      Default ordering: <code>-started_at</code> (newest first). The <code>finished_at</code> of
-      the last <code>success</code> row is used as the <code>?after=</code> cutoff for the next
-      incremental sync.
-    </p>
-
-    <hr class="section-divider">
-
-    <h2>Activity</h2>
-    <p>Stores a single Strava activity. Upserted on every sync using <code>strava_id</code> as the unique key.</p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>strava_id</code></td><td>BigIntegerField (unique)</td><td>Strava's own activity ID</td></tr>
-          <tr><td><code>name</code></td><td>CharField(255)</td><td>Activity name set by the athlete</td></tr>
-          <tr><td><code>sport_type</code></td><td>CharField(50)</td><td>Run, Ride, Swim, Walk, Hike, or Other</td></tr>
-          <tr><td><code>start_date</code></td><td>DateTimeField</td><td>UTC start time</td></tr>
-          <tr><td><code>distance_meters</code></td><td>FloatField</td><td>Total distance in metres</td></tr>
-          <tr><td><code>moving_time_seconds</code></td><td>IntegerField</td><td>Time in motion (seconds)</td></tr>
-          <tr><td><code>elapsed_time_seconds</code></td><td>IntegerField</td><td>Wall-clock duration (seconds)</td></tr>
-          <tr><td><code>total_elevation_gain</code></td><td>FloatField</td><td>Cumulative elevation gain (metres)</td></tr>
-          <tr><td><code>average_speed</code></td><td>FloatField</td><td>Average speed (m/s)</td></tr>
-          <tr><td><code>max_speed</code></td><td>FloatField</td><td>Max speed (m/s)</td></tr>
-          <tr><td><code>average_heartrate</code></td><td>FloatField (nullable)</td><td>Average HR in bpm — null if watch has no HR sync</td></tr>
-          <tr><td><code>max_heartrate</code></td><td>FloatField (nullable)</td><td>Max HR in bpm</td></tr>
-          <tr><td><code>average_cadence</code></td><td>FloatField (nullable)</td><td>Average cadence in steps/min</td></tr>
-          <tr><td><code>kudos_count</code></td><td>IntegerField</td><td>Number of kudos received</td></tr>
-          <tr><td><code>trainer</code></td><td>BooleanField</td><td><code>True</code> if recorded on an indoor trainer</td></tr>
-          <tr><td><code>commute</code></td><td>BooleanField</td><td><code>True</code> if marked as a commute</td></tr>
-          <tr><td><code>raw_data</code></td><td>JSONField</td><td>Full Strava API response — add fields without re-migration</td></tr>
-          <tr><td><code>synced_at</code></td><td>DateTimeField (auto)</td><td>Timestamp of last upsert</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3>Computed properties</h3>
-    <pre><code>activity.distance_km          # distance_meters / 1000, rounded to 2 dp
-activity.pace_per_km          # "M:SS" string — returns "—" if no distance
-activity.moving_time_display  # "1h 23m 45s" or "23m 45s"</code></pre>
-    <p>Default ordering: <code>-start_date</code> (newest first).</p>
-
-    <hr class="section-divider">
-
-    <h2>Achievement</h2>
-    <p>
-      Stores a segment achievement earned during an activity. Populated by
-      <code>fetch_achievements</code>.
-    </p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>activity</code></td><td>FK &rarr; Activity</td><td>Activity in which the achievement was earned</td></tr>
-          <tr><td><code>segment_name</code></td><td>CharField(255)</td><td>Name of the Strava segment</td></tr>
-          <tr><td><code>achievement_type</code></td><td>CharField(20)</td><td>One of: <code>pr</code>, <code>kom</code>, <code>cr</code>, <code>overall</code></td></tr>
-          <tr><td><code>rank</code></td><td>IntegerField</td><td>Finishing rank for this achievement</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>
-      The triple <code>(activity, segment_name, achievement_type)</code> is unique — safe to
-      re-run <code>fetch_achievements</code>. Default ordering: <code>achievement_type</code>,
-      then <code>segment_name</code>.
-    </p>
-    <h3>Achievement type labels</h3>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Value</th><th>Display</th></tr></thead>
-        <tbody>
-          <tr><td><code>pr</code></td><td>Personal Record</td></tr>
-          <tr><td><code>kom</code></td><td>King of the Mountain</td></tr>
-          <tr><td><code>cr</code></td><td>Course Record</td></tr>
-          <tr><td><code>overall</code></td><td>Overall Leader</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <hr class="section-divider">
-
-    <h2>BestEffort</h2>
-    <p>
-      Stores the fastest time the athlete covered a standard distance bucket in a given
-      activity. Computed by the sliding-window algorithm in <code>core/best_effort.py</code>.
-      See <a href="best-effort.html">Best-Effort Algorithm</a> for the full documentation.
-    </p>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Field</th><th>Type</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>activity</code></td><td>FK &rarr; Activity</td><td>Activity in which the best was achieved</td></tr>
-          <tr><td><code>target_distance_m</code></td><td>IntegerField</td><td>Target in metres (e.g. <code>5000</code>)</td></tr>
-          <tr><td><code>elapsed_time_s</code></td><td>FloatField</td><td>Fastest elapsed time in seconds</td></tr>
-          <tr><td><code>achieved_at</code></td><td>DateField</td><td>Calendar date of the activity</td></tr>
-          <tr><td><code>pace_per_km</code></td><td>FloatField</td><td>Decimal minutes per kilometre</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p>
-      The pair <code>(activity, target_distance_m)</code> is unique — safe to re-run
-      the computation. Default ordering: <code>target_distance_m</code> ascending.
-    </p>
-    <h3>Computed properties</h3>
-    <pre><code>effort.time_display   # &rarr; "21:34" or "1:05:12"
-effort.pace_display   # &rarr; "4:19"  (M:SS per km)</code></pre>
-
-    <hr class="section-divider">
-
-    <h2>Migrations</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Migration</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><code>0001_initial</code></td><td>Creates the <code>Activity</code> table</td></tr>
-          <tr><td><code>0002_stravatoken_synclog</code></td><td>Adds <code>StravaToken</code> and <code>SyncLog</code> tables</td></tr>
-          <tr><td><code>0003_activity_average_cadence</code></td><td>Adds <code>average_cadence</code> field to <code>Activity</code></td></tr>
-          <tr><td><code>0004_alter_activity_sport_type_alter_activity_start_date</code></td><td>Alters field options on <code>sport_type</code> and <code>start_date</code></td></tr>
-          <tr><td><code>0005_activity_achievement_count_activity_calories</code></td><td>Adds <code>achievement_count</code> and <code>calories</code> fields to <code>Activity</code></td></tr>
-          <tr><td><code>0006_backfill_calories_achievement_count</code></td><td>Data migration: backfills <code>calories</code> and <code>achievement_count</code> from <code>raw_data</code></td></tr>
-          <tr><td><code>0007_achievement</code></td><td>Creates the <code>Achievement</code> table</td></tr>
-          <tr><td><code>0008_besteffort</code></td><td>Creates the <code>BestEffort</code> table</td></tr>
-        </tbody>
-      </table>
-    </div>
+<h1 id="models">Models</h1>
+<p>File: <a href="../core/models.py"><code>core/models.py</code></a></p>
+<h2 id="stravatoken">StravaToken</h2>
+<p>Persists the Strava OAuth2 token pair for a single athlete. Strava uses rolling refresh
+tokens — every <code>/oauth/token</code> call returns a new refresh token and invalidates the old one.
+This model is the single source of truth; <code>strava_client.py</code> reads from and writes back to
+this row so the rotation is never lost.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>athlete_id</code></td>
+<td>BigIntegerField (unique)</td>
+<td>Strava athlete ID</td>
+</tr>
+<tr>
+<td><code>access_token</code></td>
+<td>TextField</td>
+<td>Current OAuth access token (valid ~6 hours)</td>
+</tr>
+<tr>
+<td><code>refresh_token</code></td>
+<td>TextField</td>
+<td>Current rolling refresh token</td>
+</tr>
+<tr>
+<td><code>expires_at</code></td>
+<td>BigIntegerField</td>
+<td>Unix timestamp when the access token expires</td>
+</tr>
+<tr>
+<td><code>updated_at</code></td>
+<td>DateTimeField (auto)</td>
+<td>Timestamp of last token rotation</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="computed-property">Computed property</h3>
+<pre><code class="language-python">token.is_expired  # True if access token expires within the next 5 minutes
+</code></pre>
+<hr />
+<h2 id="synclog">SyncLog</h2>
+<p>Audit trail for every run of <code>sync_activities</code>. One row per ETL execution.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>started_at</code></td>
+<td>DateTimeField (auto)</td>
+<td>When the sync started</td>
+</tr>
+<tr>
+<td><code>finished_at</code></td>
+<td>DateTimeField (nullable)</td>
+<td>When the sync completed (null if still running)</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>CharField</td>
+<td><code>running</code> / <code>success</code> / <code>partial</code> / <code>failed</code></td>
+</tr>
+<tr>
+<td><code>incremental</code></td>
+<td>BooleanField</td>
+<td><code>True</code> = incremental sync, <code>False</code> = full re-sync</td>
+</tr>
+<tr>
+<td><code>pages_fetched</code></td>
+<td>IntegerField</td>
+<td>Number of API pages retrieved</td>
+</tr>
+<tr>
+<td><code>activities_created</code></td>
+<td>IntegerField</td>
+<td>New rows inserted</td>
+</tr>
+<tr>
+<td><code>activities_updated</code></td>
+<td>IntegerField</td>
+<td>Existing rows updated</td>
+</tr>
+<tr>
+<td><code>error_message</code></td>
+<td>TextField</td>
+<td>What went wrong if status is <code>failed</code> or <code>partial</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Statuses: <code>success</code> — everything worked; <code>partial</code> — activities synced but some best efforts or
+achievements could not be fetched (the next sync retries them); <code>failed</code> — activities could not
+be fetched; <code>running</code> — in progress. A run still <code>running</code> after 3 hours (its process was
+killed) is marked <code>failed</code> with an "Interrupted" message by the next sync.</p>
+<p>Default ordering: <code>-started_at</code> (newest first).</p>
+<p>The incremental sync's cutoff comes from the newest stored <code>Activity</code>, not from this table — see
+<a href="management-commands.html#sync_activities"><code>management-commands.md</code></a>.</p>
+<hr />
+<h2 id="activity">Activity</h2>
+<p>Stores a single Strava activity. Upserted on every sync using <code>strava_id</code> as the unique key.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>strava_id</code></td>
+<td>BigIntegerField (unique)</td>
+<td>Strava's own activity ID</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>CharField(255)</td>
+<td>Activity name set by the athlete</td>
+</tr>
+<tr>
+<td><code>sport_type</code></td>
+<td>CharField(50)</td>
+<td>Strava's sport type as sent, e.g. Run, TrailRun, Walk, Ride, Workout, WeightTraining, Yoga</td>
+</tr>
+<tr>
+<td><code>start_date</code></td>
+<td>DateTimeField</td>
+<td>Start time (stored in UTC; shown in <code>TIME_ZONE</code>)</td>
+</tr>
+<tr>
+<td><code>distance_meters</code></td>
+<td>FloatField</td>
+<td>Total distance in metres</td>
+</tr>
+<tr>
+<td><code>moving_time_seconds</code></td>
+<td>IntegerField</td>
+<td>Time in motion (seconds)</td>
+</tr>
+<tr>
+<td><code>elapsed_time_seconds</code></td>
+<td>IntegerField</td>
+<td>Wall-clock duration (seconds)</td>
+</tr>
+<tr>
+<td><code>total_elevation_gain</code></td>
+<td>FloatField</td>
+<td>Cumulative elevation gain (metres)</td>
+</tr>
+<tr>
+<td><code>average_speed</code></td>
+<td>FloatField</td>
+<td>Average speed (m/s)</td>
+</tr>
+<tr>
+<td><code>max_speed</code></td>
+<td>FloatField</td>
+<td>Max speed (m/s)</td>
+</tr>
+<tr>
+<td><code>average_heartrate</code></td>
+<td>FloatField (nullable)</td>
+<td>Average HR in bpm — null if watch has no HR sync</td>
+</tr>
+<tr>
+<td><code>max_heartrate</code></td>
+<td>FloatField (nullable)</td>
+<td>Max HR in bpm</td>
+</tr>
+<tr>
+<td><code>average_cadence</code></td>
+<td>FloatField (nullable)</td>
+<td>Average cadence in steps/min</td>
+</tr>
+<tr>
+<td><code>kudos_count</code></td>
+<td>IntegerField</td>
+<td>Number of kudos received</td>
+</tr>
+<tr>
+<td><code>trainer</code></td>
+<td>BooleanField</td>
+<td><code>True</code> if recorded on an indoor trainer</td>
+</tr>
+<tr>
+<td><code>commute</code></td>
+<td>BooleanField</td>
+<td><code>True</code> if marked as a commute</td>
+</tr>
+<tr>
+<td><code>raw_data</code></td>
+<td>JSONField</td>
+<td>Full Strava API response — safe to add fields without re-migration</td>
+</tr>
+<tr>
+<td><code>synced_at</code></td>
+<td>DateTimeField (auto)</td>
+<td>Timestamp of last upsert</td>
+</tr>
+<tr>
+<td><code>best_efforts_checked_at</code></td>
+<td>DateTimeField (nullable)</td>
+<td>When GPS streams were processed for best efforts; empty = still to do (new, or last fetch failed)</td>
+</tr>
+<tr>
+<td><code>achievements_checked_at</code></td>
+<td>DateTimeField (nullable)</td>
+<td>When segment achievements were fetched; empty = still to do</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="computed-properties">Computed properties</h3>
+<pre><code class="language-python">activity.distance_km          # distance_meters / 1000, rounded to 2 dp
+activity.pace_per_km          # &quot;M:SS&quot; string, e.g. &quot;5:32&quot; — returns &quot;—&quot; if no distance
+activity.moving_time_display  # &quot;1h 23m 45s&quot; or &quot;23m 45s&quot;
+</code></pre>
+<h3 id="ordering">Ordering</h3>
+<p>Default ordering is <code>-start_date</code> (newest first).</p>
+<hr />
+<h2 id="achievement">Achievement</h2>
+<p>Stores a segment achievement earned during an activity. Populated by <code>fetch_achievements</code>.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>activity</code></td>
+<td>FK → Activity</td>
+<td>Activity in which the achievement was earned</td>
+</tr>
+<tr>
+<td><code>segment_name</code></td>
+<td>CharField(255)</td>
+<td>Name of the Strava segment</td>
+</tr>
+<tr>
+<td><code>achievement_type</code></td>
+<td>CharField(20)</td>
+<td>One of: <code>pr</code>, <code>kom</code>, <code>cr</code>, <code>overall</code></td>
+</tr>
+<tr>
+<td><code>rank</code></td>
+<td>IntegerField</td>
+<td>Finishing rank for this achievement</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The triple <code>(activity, segment_name, achievement_type)</code> is unique — safe to re-run <code>fetch_achievements</code>.</p>
+<p>Default ordering: <code>achievement_type</code>, then <code>segment_name</code>.</p>
+<h3 id="achievement--type-labels">Achievement — type labels</h3>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Display</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pr</code></td>
+<td>Personal Record</td>
+</tr>
+<tr>
+<td><code>kom</code></td>
+<td>King of the Mountain</td>
+</tr>
+<tr>
+<td><code>cr</code></td>
+<td>Course Record</td>
+</tr>
+<tr>
+<td><code>overall</code></td>
+<td>Overall Leader</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr />
+<h2 id="besteffort">BestEffort</h2>
+<p>Stores the fastest time an athlete covered a standard distance bucket in a given activity.
+Computed by the sliding-window algorithm in <code>core/best_effort.py</code>.
+See <a href="best-effort.html"><code>best-effort.md</code></a> for the full algorithm documentation.</p>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>activity</code></td>
+<td>FK → Activity</td>
+<td>Activity in which the best was achieved</td>
+</tr>
+<tr>
+<td><code>target_distance_m</code></td>
+<td>IntegerField</td>
+<td>Target in metres (e.g. <code>5000</code>)</td>
+</tr>
+<tr>
+<td><code>elapsed_time_s</code></td>
+<td>FloatField</td>
+<td>Fastest elapsed time in seconds</td>
+</tr>
+<tr>
+<td><code>achieved_at</code></td>
+<td>DateField</td>
+<td>Calendar date of the activity</td>
+</tr>
+<tr>
+<td><code>pace_per_km</code></td>
+<td>FloatField</td>
+<td>Decimal minutes per kilometre</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The pair <code>(activity, target_distance_m)</code> is unique — running the computation again is safe.</p>
+<p>Default ordering: <code>target_distance_m</code> ascending.</p>
+<h3 id="besteffort--computed-properties">BestEffort — computed properties</h3>
+<pre><code class="language-python">effort.time_display   # → &quot;21:34&quot; or &quot;1:05:12&quot;
+effort.pace_display   # → &quot;4:19&quot;  (M:SS per km)
+</code></pre>
+<hr />
+<h2 id="migrations">Migrations</h2>
+<div class="table-wrap">
+<table>
+<thead>
+<tr>
+<th>Migration</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0001_initial</code></td>
+<td>Creates the <code>Activity</code> table</td>
+</tr>
+<tr>
+<td><code>0002_stravatoken_synclog</code></td>
+<td>Adds <code>StravaToken</code> and <code>SyncLog</code> tables</td>
+</tr>
+<tr>
+<td><code>0003_activity_average_cadence</code></td>
+<td>Adds <code>average_cadence</code> field to <code>Activity</code></td>
+</tr>
+<tr>
+<td><code>0004_alter_activity_sport_type_alter_activity_start_date</code></td>
+<td>Alters field options on <code>sport_type</code> and <code>start_date</code></td>
+</tr>
+<tr>
+<td><code>0005_activity_achievement_count_activity_calories</code></td>
+<td>Adds <code>achievement_count</code> and <code>calories</code> fields to <code>Activity</code></td>
+</tr>
+<tr>
+<td><code>0006_backfill_calories_achievement_count</code></td>
+<td>Data migration: backfills <code>calories</code> and <code>achievement_count</code> from <code>raw_data</code></td>
+</tr>
+<tr>
+<td><code>0007_achievement</code></td>
+<td>Creates the <code>Achievement</code> table</td>
+</tr>
+<tr>
+<td><code>0008_besteffort</code></td>
+<td>Creates the <code>BestEffort</code> table</td>
+</tr>
+<tr>
+<td><code>0009_activity_checked_flags</code></td>
+<td>Adds <code>best_efforts_checked_at</code> / <code>achievements_checked_at</code>; marks activities that already have rows as checked</td>
+</tr>
+<tr>
+<td><code>0010_delete_non_run_best_efforts</code></td>
+<td>Data migration: deletes best efforts computed for walks, rides and treadmill runs</td>
+</tr>
+</tbody>
+</table>
+</div>
   </div>
 </div>
 

@@ -1,4 +1,4 @@
-"""Django admin registrations for StravaToken, SyncLog, Activity, and Achievement."""
+"""Django admin registrations for StravaToken, SyncLog, Activity, BestEffort and Achievement."""
 from django.contrib import admin
 from .models import Achievement, Activity, BestEffort, StravaToken, SyncLog
 
@@ -17,7 +17,14 @@ class StravaTokenAdmin(admin.ModelAdmin):
     )
 
     def is_expired(self, obj):
-        """Expose the ``is_expired`` model property as a boolean column."""
+        """Expose the ``is_expired`` model property as a boolean column.
+
+        Args:
+            obj: The ``StravaToken`` row being listed.
+
+        Returns:
+            ``True`` if the access token expires within the next 5 minutes.
+        """
         return obj.is_expired
 
     is_expired.boolean = True
